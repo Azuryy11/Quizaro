@@ -1,0 +1,23 @@
+body {
+    background-color: #34215d;
+}
+
+@font-face {
+    font-family: 'Sportrop';
+    src: url('../fonts/sportrop/Sportrop.otf') format('opentype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Neoneon';
+    src: url('../fonts/neoneon/Neoneon.otf') format('opentype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+.font-neoneon {
+    font-family: 'Neoneon', sans-serif;
+}
