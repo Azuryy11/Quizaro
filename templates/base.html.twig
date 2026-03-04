@@ -12,6 +12,20 @@
         {% endblock %}
     </head>
     <body>
+        <header style="padding: 1rem; display: flex; gap: 1rem; align-items: center;">
+            <a href="{{ path('app_home') }}">Accueil</a>
+            {% if is_granted('ROLE_ADMIN') %}
+                <a href="{{ path('admin_users_index') }}">Admin users</a>
+            {% endif %}
+            <span style="margin-left: auto; color: white;">Mode API-first (UI côté frontend)</span>
+        </header>
+
+        {% for label, messages in app.flashes %}
+            {% for message in messages %}
+                <div style="margin: .5rem 1rem; color: {{ label == 'success' ? '#b6f7c1' : '#ffd1d1' }};">{{ message }}</div>
+            {% endfor %}
+        {% endfor %}
+
         {% block body %}{% endblock %}
     </body>
 </html>

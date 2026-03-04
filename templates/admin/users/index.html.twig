@@ -1,0 +1,49 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Admin - Utilisateurs{% endblock %}
+
+{% block body %}
+    <div style="max-width: 980px; margin: 1rem auto; padding: 0 1rem;">
+        <h1>Gestion des utilisateurs</h1>
+
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th style="text-align: left; padding: .5rem; border-bottom: 1px solid #ddd;">ID</th>
+                    <th style="text-align: left; padding: .5rem; border-bottom: 1px solid #ddd;">Email</th>
+                    <th style="text-align: left; padding: .5rem; border-bottom: 1px solid #ddd;">Pseudo</th>
+                    <th style="text-align: left; padding: .5rem; border-bottom: 1px solid #ddd;">Rôles</th>
+                    <th style="text-align: left; padding: .5rem; border-bottom: 1px solid #ddd;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                    {% set isAdmin = 'ROLE_ADMIN' in user.roles %}
+                    <tr>
+                        <td style="padding: .5rem; border-bottom: 1px solid #f1f1f1;">{{ user.id }}</td>
+                        <td style="padding: .5rem; border-bottom: 1px solid #f1f1f1;">{{ user.email }}</td>
+                        <td style="padding: .5rem; border-bottom: 1px solid #f1f1f1;">{{ user.displayName ?: '-' }}</td>
+                        <td style="padding: .5rem; border-bottom: 1px solid #f1f1f1;">{{ user.roles|join(', ') }}</td>
+                        <td style="padding: .5rem; border-bottom: 1px solid #f1f1f1;">
+                            {% if isAdmin %}
+                                <form method="post" action="{{ path('admin_users_demote', { id: user.id }) }}">
+                                    <input type="hidden" name="_token" value="{{ csrf_token('admin_users_demote_' ~ user.id) }}">
+                                    <button type="submit">Retirer admin</button>
+                                </form>
+                            {% else %}
+                                <form method="post" action="{{ path('admin_users_promote', { id: user.id }) }}">
+                                    <input type="hidden" name="_token" value="{{ csrf_token('admin_users_promote_' ~ user.id) }}">
+                                    <button type="submit">Passer admin</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="5" style="padding: .75rem;">Aucun utilisateur trouvé.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

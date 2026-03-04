@@ -9,6 +9,11 @@
 </style>
 
 <div class="example-wrapper">
-    
+    <h1 class="font-neoneon">Bienvenue sur Quizaro</h1>
+    <p>L'interface utilisateur est côté frontend.</p>
+    <p><a href="http://localhost:5173/">Ouvrir le frontend</a></p>
+    {% if is_granted('ROLE_ADMIN') %}
+        <p><a href="{{ path('admin_users_index') }}">Gérer les utilisateurs (admin)</a></p>
+    {% endif %}
 </div>
 {% endblock %}

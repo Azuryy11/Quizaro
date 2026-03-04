@@ -21,7 +21,7 @@ class Quiz
     /**
      * @var Collection<int, Question>
      */
-    #[ORM\OneToMany(targetEntity: Question::class, mappedBy: 'quiz')]
+    #[ORM\OneToMany(targetEntity: Question::class, mappedBy: 'quiz', orphanRemoval: true, cascade: ['persist', 'remove'])]
     private Collection $questions;
 
     /**
@@ -30,10 +30,27 @@ class Quiz
     #[ORM\OneToMany(targetEntity: Score::class, mappedBy: 'quiz')]
     private Collection $scores;
 
+    /**
+     * @var Collection<int, QuizSession>
+     */
+    #[ORM\OneToMany(targetEntity: QuizSession::class, mappedBy: 'quiz')]
+    private Collection $quizSessions;
+
+    #[ORM\Column(length: 160)]
+    private string $title = '';
+
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $description = null;
+
+    #[ORM\Column]
+    private \DateTimeImmutable $createdAt;
+
     public function __construct()
     {
         $this->questions = new ArrayCollection();
         $this->scores = new ArrayCollection();
+        $this->quizSessions = new ArrayCollection();
+        $this->createdAt = new \DateTimeImmutable();
     }
 
     public function getId(): ?int
@@ -52,6 +69,43 @@ class Quiz
 
         return $this;
     }
+    
+    public function getTitle(): string
+    {
+        return $this->title;
+    }
+
+    public function setTitle(string $title): static
+    {
+        $this->title = $title;
+
+        return $this;
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this->description;
+    }
+
+    public function setDescription(?string $description): static
+    {
+        $this->description = $description;
+
+        return $this;
+    }
+
+    public function getCreatedAt(): \DateTimeImmutable
+    {
+        return $this->createdAt;
+    }
+
+    public function setCreatedAt(\DateTimeImmutable $createdAt): static
+    {
+        $this->createdAt = $createdAt;
+
+        return $this;
+    }
+
 
     /**
      * @return Collection<int, Question>
@@ -105,6 +159,35 @@ class Quiz
         if ($this->scores->removeElement($score)) {
             if ($score->getQuiz() === $this) {
                 $score->setQuiz(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, QuizSession>
+     */
+    public function getQuizSessions(): Collection
+    {
+        return $this->quizSessions;
+    }
+
+    public function addQuizSession(QuizSession $quizSession): static
+    {
+        if (!$this->quizSessions->contains($quizSession)) {
+            $this->quizSessions->add($quizSession);
+            $quizSession->setQuiz($this);
+        }
+ 
+        return $this;
+    }
+
+    public function removeQuizSession(QuizSession $quizSession): static
+    {
+        if ($this->quizSessions->removeElement($quizSession)) {
+            if ($quizSession->getQuiz() === $this) {
+                $quizSession->setQuiz(null);
             }
         }
 

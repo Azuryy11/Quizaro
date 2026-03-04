@@ -18,3 +18,8 @@
 /public/assets/
 /assets/vendor/
 ###< symfony/asset-mapper ###
+
+###> symfony/dotenv ###
+/.env
+/.env.test
+/.env.dev
