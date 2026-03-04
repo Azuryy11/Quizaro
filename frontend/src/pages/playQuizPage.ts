@@ -73,9 +73,17 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
         try {
           const result = await apiGet(`/api/quizzes/${quizId}/play`)
           const quiz = (result.quiz as Record<string, unknown> | undefined) ?? undefined
+          const session = (result.session as Record<string, unknown> | undefined) ?? undefined
+          const playerSessionId = Number(session?.playerSessionId ?? 0)
+          const sessionCode = String(session?.code ?? '').trim()
 
           if (!quiz) {
             container.innerHTML = '<p>Quiz introuvable.</p>'
+            return
+          }
+
+          if (!Number.isFinite(playerSessionId) || playerSessionId <= 0) {
+            container.innerHTML = '<p>Session de jeu invalide.</p>'
             return
           }
 
@@ -89,7 +97,8 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
 
           container.innerHTML = `
             <h3>${title}</h3>
-            <form id="play-quiz-form">
+            ${sessionCode ? '<div class="session-code-banner">Code de session : ' + escapeHtml(sessionCode) + '</div>' : 'Aucun code généré'}
+           <form id="play-quiz-form">
               ${questions
                 .map(
                   (question, index) => `
@@ -137,13 +146,17 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
             }
 
             try {
-              const submitResult = await apiPost(`/api/quizzes/${quizId}/submit`, { answers })
+              const submitResult = await apiPost(`/api/quizzes/${quizId}/submit`, {
+                playerSessionId,
+                answers,
+              })
               const resultPayload = (submitResult.result as Record<string, unknown> | undefined) ?? undefined
               const score = Number(resultPayload?.score ?? 0)
               const total = Number(resultPayload?.totalQuestions ?? questions.length)
+              const percentage = total > 0 ? (score / total) * 100 : 0
 
               if (message) {
-                message.textContent = `Résultat: ${score}/${total} ✅`
+                message.textContent = `Résultat: ${score}/${total}${percentage >= 50 ? ' ✅' : '❌'}`
               }
             } catch (error) {
               if (message) {

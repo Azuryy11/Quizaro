@@ -35,6 +35,7 @@ export const renderProfilePage = ({ isAuthenticated, me, escapeHtml, navigate }:
         </ul>
 
         <div class="profile-actions">
+          <button id="create-quiz">Créer un quiz</button>
           <button id="open-my-quizzes">Mes quiz</button>
         </div>
 
@@ -52,6 +53,12 @@ export const renderProfilePage = ({ isAuthenticated, me, escapeHtml, navigate }:
       if (openMyQuizzesButton) {
         openMyQuizzesButton.addEventListener('click', () => {
           navigate('/my-quizzes')
+        })
+      }
+      const createQuizButton = document.querySelector<HTMLButtonElement>('#create-quiz')
+      if (createQuizButton) {
+        createQuizButton.addEventListener('click', () => {
+          navigate('/create-quiz')
         })
       }
 

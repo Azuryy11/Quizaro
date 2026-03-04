@@ -222,3 +222,11 @@ li {
     padding-top: 10.2rem;
   }
 }
+
+.session-code-banner {
+  margin: 1rem 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 0.08em;
+}

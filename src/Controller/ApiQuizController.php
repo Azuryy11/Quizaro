@@ -97,7 +97,27 @@ final class ApiQuizController extends AbstractController
             ], Response::HTTP_FORBIDDEN);
         }
 
+        $quizSession = new QuizSession();
+        $quizSession->setQuiz($quiz);
+        $quizSession->setCode(strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)));
+        $quizSession->setStatus(QuizSession::STATUS_RUNNING);
+
+        $playerSession = new PlayerSession();
+        $playerSession->setQuizSession($quizSession);
+        $playerSession->setUser($user);
+        $playerSession->setNickname($user->getDisplayName() ?: $user->getUserIdentifier());
+
+        $entityManager->persist($quizSession);
+        $entityManager->persist($playerSession);
+        $entityManager->flush();
+
         return $this->json([
+            'session' => [
+                'playerSessionId' => $playerSession->getId(),
+                'quizSessionId' => $quizSession->getId(),
+                'code' => $quizSession->getCode(),
+                'startedAt' => $quizSession->getStartedAt()->format(DATE_ATOM),
+            ],
             'quiz' => $this->normalizeQuizForPlay($quiz),
         ]);
     }
@@ -133,10 +153,44 @@ final class ApiQuizController extends AbstractController
             return $payload;
         }
 
+        $playerSessionId = $payload['playerSessionId'] ?? null;
         $answersValue = $payload['answers'] ?? null;
+
+        if (!is_int($playerSessionId)) {
+            return $this->json([
+                'message' => 'playerSessionId est requis.',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
         if (!is_array($answersValue) || [] === $answersValue || !array_is_list($answersValue)) {
             return $this->json([
                 'message' => 'Le champ answers doit être un tableau non vide.',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        $playerSession = $entityManager->getRepository(PlayerSession::class)->find($playerSessionId);
+        if (!$playerSession instanceof PlayerSession) {
+            return $this->json([
+                'message' => 'Session joueur introuvable.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($playerSession->getUser()?->getId() !== $user->getId()) {
+            return $this->json([
+                'message' => 'Cette session ne t\'appartient pas.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        $quizSession = $playerSession->getQuizSession();
+        if (!$quizSession instanceof QuizSession || $quizSession->getQuiz()?->getId() !== $quiz->getId()) {
+            return $this->json([
+                'message' => 'Cette session ne correspond pas à ce quiz.',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (null !== $playerSession->getFinishedAt()) {
+            return $this->json([
+                'message' => 'Cette session est déjà terminée.',
             ], Response::HTTP_BAD_REQUEST);
         }
 
@@ -154,20 +208,6 @@ final class ApiQuizController extends AbstractController
                 'message' => 'Ce quiz ne contient aucune question.',
             ], Response::HTTP_BAD_REQUEST);
         }
-
-        $quizSession = new QuizSession();
-        $quizSession->setQuiz($quiz);
-        $quizSession->setCode(strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)));
-        $quizSession->setStatus(QuizSession::STATUS_FINISHED);
-        $quizSession->setEndedAt(new \DateTimeImmutable());
-
-        $playerSession = new PlayerSession();
-        $playerSession->setQuizSession($quizSession);
-        $playerSession->setUser($user);
-        $playerSession->setNickname($user->getDisplayName() ?: $user->getUserIdentifier());
-
-        $entityManager->persist($quizSession);
-        $entityManager->persist($playerSession);
 
         $score = 0;
         $submitted = 0;
@@ -242,6 +282,8 @@ final class ApiQuizController extends AbstractController
 
         $playerSession->setScore($score);
         $playerSession->setFinishedAt(new \DateTimeImmutable());
+        $quizSession->setStatus(QuizSession::STATUS_FINISHED);
+        $quizSession->setEndedAt(new \DateTimeImmutable());
 
         $entityManager->flush();
 
