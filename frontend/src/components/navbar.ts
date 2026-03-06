@@ -12,7 +12,7 @@ export const renderNav = (isAuthenticated: boolean): string => {
       </div>
       <span class="nav-brand">Quizaro</span>
       <div class="nav-group nav-right">
-        ${isAuthenticated ? '<a href="#/profile">Profil</a><a id="logout-btn">Déconnexion</a>' : '<a href="#/login">Connexion</a><a href="#/register">Inscription</a>'}
+        ${isAuthenticated ? '<a href="#/profile">Profil</a><button id="logout-btn" type="button">Déconnexion</button>' : '<a href="#/login">Connexion</a><a href="#/register">Inscription</a>'}
       </div>
     </nav>
   `

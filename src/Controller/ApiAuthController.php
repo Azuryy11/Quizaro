@@ -33,7 +33,6 @@ final class ApiAuthController extends AbstractController
                 'displayName' => $user->getDisplayName() ?: 'Non défini',
                 'roles' => $user->getRoles(),
                 'quizzesCount' => $user->getQuizzes()->count(),
-                'scoresCount' => $user->getScores()->count(),
             ],
         ]);
     }

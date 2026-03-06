@@ -1,10 +1,13 @@
 import type { PageContext, PageRenderResult } from './types'
+import { consumeWarmedPlayPayload } from '../sessionWarmupCache'
 
 type PlayQuizQuestion = {
   id: number
   label: string
   answers: Array<{ id: number; content: string }>
 }
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms))
 
 const readQuestions = (quiz: Record<string, unknown>): PlayQuizQuestion[] => {
   const rawQuestions = Array.isArray(quiz.questions) ? quiz.questions : []
@@ -57,7 +60,12 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
     content: `
       <section class="card">
         <h2>Répondre au quiz</h2>
-        <div id="play-quiz-container">Chargement du quiz...</div>
+        <div id="play-quiz-container">
+          <div class="loading-row" aria-busy="true" aria-live="polite">
+            <span class="spinner" aria-hidden="true"></span>
+            <span>Préparation de la session...</span>
+          </div>
+        </div>
         <p id="play-quiz-msg"></p>
       </section>
     `,
@@ -70,8 +78,18 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
       }
 
       const loadQuiz = async (): Promise<void> => {
+        const minimumDelay = sleep(1000)
+
         try {
-          const result = await apiGet(`/api/quizzes/${quizId}/play`)
+          const warmedResult = consumeWarmedPlayPayload(quizId)
+          const result = warmedResult ?? (await apiGet(`/api/quizzes/${quizId}/play`))
+
+          await minimumDelay
+
+          if (!document.body.contains(container)) {
+            return
+          }
+
           const quiz = (result.quiz as Record<string, unknown> | undefined) ?? undefined
           const session = (result.session as Record<string, unknown> | undefined) ?? undefined
           const playerSessionId = Number(session?.playerSessionId ?? 0)
@@ -102,24 +120,26 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
               ${questions
                 .map(
                   (question, index) => `
-                    <fieldset class="card" style="margin-top: 1rem;">
+                    <fieldset class="card play-quiz-question">
                       <legend>Question ${index + 1}</legend>
                       <p>${escapeHtml(question.label)}</p>
-                      ${question.answers
-                        .map(
-                          (answer) => `
-                            <label>
-                              <input type="radio" name="question-${question.id}" value="${answer.id}" required>
-                              ${escapeHtml(answer.content)}
-                            </label>
-                          `,
-                        )
-                        .join('')}
+                      <div class="answer-options">
+                        ${question.answers
+                          .map(
+                            (answer) => `
+                              <label class="answer-option">
+                                <input type="radio" name="question-${question.id}" value="${answer.id}" required>
+                                <span class="answer-option__text">${escapeHtml(answer.content)}</span>
+                              </label>
+                            `,
+                          )
+                          .join('')}
+                      </div>
                     </fieldset>
                   `,
                 )
                 .join('')}
-              <button type="submit" style="margin-top: 1rem;">Valider mes réponses</button>
+              <button class="play-quiz-submit" type="submit">Valider mes réponses</button>
             </form>
           `
 
@@ -165,6 +185,12 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
             }
           })
         } catch (error) {
+          await minimumDelay
+
+          if (!document.body.contains(container)) {
+            return
+          }
+
           container.innerHTML = `<p>Impossible de charger ce quiz (${escapeHtml((error as Error).message)})</p>`
         }
       }

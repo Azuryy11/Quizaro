@@ -16,7 +16,7 @@ class PlayerSession
     private ?int $id = null;
 
     #[ORM\ManyToOne(inversedBy: 'playerSessions')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private ?QuizSession $quizSession = null;
 
     #[ORM\ManyToOne(inversedBy: 'playerSessions')]

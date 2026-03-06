@@ -25,12 +25,6 @@ class Quiz
     private Collection $questions;
 
     /**
-     * @var Collection<int, Score>
-     */
-    #[ORM\OneToMany(targetEntity: Score::class, mappedBy: 'quiz')]
-    private Collection $scores;
-
-    /**
      * @var Collection<int, QuizSession>
      */
     #[ORM\OneToMany(targetEntity: QuizSession::class, mappedBy: 'quiz')]
@@ -48,7 +42,6 @@ class Quiz
     public function __construct()
     {
         $this->questions = new ArrayCollection();
-        $this->scores = new ArrayCollection();
         $this->quizSessions = new ArrayCollection();
         $this->createdAt = new \DateTimeImmutable();
     }
@@ -130,35 +123,6 @@ class Quiz
         if ($this->questions->removeElement($question)) {
             if ($question->getQuiz() === $this) {
                 $question->setQuiz(null);
-            }
-        }
-
-        return $this;
-    }
-
-    /**
-     * @return Collection<int, Score>
-     */
-    public function getScores(): Collection
-    {
-        return $this->scores;
-    }
-
-    public function addScore(Score $score): static
-    {
-        if (!$this->scores->contains($score)) {
-            $this->scores->add($score);
-            $score->setQuiz($this);
-        }
-
-        return $this;
-    }
-
-    public function removeScore(Score $score): static
-    {
-        if ($this->scores->removeElement($score)) {
-            if ($score->getQuiz() === $this) {
-                $score->setQuiz(null);
             }
         }
 

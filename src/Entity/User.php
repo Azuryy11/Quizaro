@@ -52,12 +52,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     private Collection $quizzes;
 
     /**
-     * @var Collection<int, Score>
-     */
-    #[ORM\OneToMany(targetEntity: Score::class, mappedBy: 'user')]
-    private Collection $scores;
-
-    /**
      * @var Collection<int, PlayerSession>
      */
     #[ORM\OneToMany(targetEntity: PlayerSession::class, mappedBy: 'user')]
@@ -66,7 +60,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function __construct()
     {
         $this->quizzes = new ArrayCollection();
-        $this->scores = new ArrayCollection();
         $this->playerSessions = new ArrayCollection();
     }
 
@@ -164,35 +157,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         if ($this->quizzes->removeElement($quiz)) {
             if ($quiz->getCreatedBy() === $this) {
                 $quiz->setCreatedBy(null);
-            }
-        }
-
-        return $this;
-    }
-
-    /**
-     * @return Collection<int, Score>
-     */
-    public function getScores(): Collection
-    {
-        return $this->scores;
-    }
-
-    public function addScore(Score $score): static
-    {
-        if (!$this->scores->contains($score)) {
-            $this->scores->add($score);
-            $score->setUser($this);
-        }
-
-        return $this;
-    }
-
-    public function removeScore(Score $score): static
-    {
-        if ($this->scores->removeElement($score)) {
-            if ($score->getUser() === $this) {
-                $score->setUser(null);
             }
         }
 

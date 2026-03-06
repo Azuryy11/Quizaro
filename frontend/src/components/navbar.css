@@ -68,8 +68,7 @@
 
 .nav-logo {
   display: block;
-  position:absolute;
-  transform: translateY(-10%);
+  position: absolute;
   transform: translateX(50%);
   height: 5rem;
   width: auto;
@@ -128,10 +127,10 @@
     width: 100%;
   }
 
-  .nav-l
-eft,
+  .nav-left,
   .nav-right {
-    justify-content: center;  }
+    justify-content: center;
+  }
 
   .nav-group a,
   .nav-group button {

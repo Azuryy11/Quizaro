@@ -1,5 +1,40 @@
 import type { PageContext, PageRenderResult } from './types'
 
+type EditableQuestion = {
+  label: string
+  correctAnswer: boolean
+}
+
+const normalizeCorrectAnswer = (rawQuestion: Record<string, unknown>): boolean => {
+  const answers = Array.isArray(rawQuestion.answers) ? (rawQuestion.answers as unknown[]) : []
+  const correctAnswer = answers
+    .map((answer) => (answer && typeof answer === 'object' ? (answer as Record<string, unknown>) : null))
+    .find((answer) => Boolean(answer?.isCorrect))
+
+  const content = String(correctAnswer?.content ?? '').trim().toLowerCase()
+  if (content === 'vrai' || content === 'true' || content === '1') {
+    return true
+  }
+  if (content === 'faux' || content === 'false' || content === '0') {
+    return false
+  }
+
+  return Boolean(correctAnswer)
+}
+
+const extractEditableQuestions = (quiz: Record<string, unknown>): EditableQuestion[] => {
+  const questions = Array.isArray(quiz.questions) ? (quiz.questions as unknown[]) : []
+
+  return questions
+    .map((question) => (question && typeof question === 'object' ? (question as Record<string, unknown>) : null))
+    .filter((question): question is Record<string, unknown> => Boolean(question))
+    .map((question) => ({
+      label: String(question.label ?? '').trim(),
+      correctAnswer: normalizeCorrectAnswer(question),
+    }))
+    .filter((question) => question.label !== '')
+}
+
 const renderQuestionBlock = (index: number): string => {
   const questionNumber = index + 1
 
@@ -20,18 +55,21 @@ const renderQuestionBlock = (index: number): string => {
   `
 }
 
-export const renderCreateQuizPage = ({ isAuthenticated, navigate, apiPost }: PageContext): PageRenderResult => {
+export const renderEditQuizPage = (
+  { isAuthenticated, navigate, apiGet, apiPut, escapeHtml }: PageContext,
+  quizId: number,
+): PageRenderResult => {
   if (!isAuthenticated) {
     return {
       content: `
         <section class="card">
-          <h2>Création de Quiz</h2>
-          <p>Connecte toi pour créer un quiz</p>
-          <button id="go-login-create-quiz">Aller à la connexion</button>
+          <h2>Modification de Quiz</h2>
+          <p>Connecte toi pour modifier un quiz</p>
+          <button id="go-login-edit-quiz">Aller à la connexion</button>
         </section>
       `,
       mount: () => {
-        const goLoginButton = document.querySelector<HTMLButtonElement>('#go-login-create-quiz')
+        const goLoginButton = document.querySelector<HTMLButtonElement>('#go-login-edit-quiz')
         if (goLoginButton) {
           goLoginButton.addEventListener('click', () => navigate('/login'))
         }
@@ -42,8 +80,8 @@ export const renderCreateQuizPage = ({ isAuthenticated, navigate, apiPost }: Pag
   return {
     content: `
       <section class="card">
-        <h2>Créer un quiz</h2>
-        <form id="create-quiz-form">
+        <h2>Modifier un quiz</h2>
+        <form id="edit-quiz-form">
           <label for="quiz-title">Titre du quiz</label>
           <input id="quiz-title" name="title" type="text" maxlength="160" required>
 
@@ -54,20 +92,22 @@ export const renderCreateQuizPage = ({ isAuthenticated, navigate, apiPost }: Pag
 
           <button id="add-question-btn" type="button">Ajouter une question</button>
 
-          <button type="submit">Créer le quiz</button>
-          <p id="create-quiz-msg"></p>
+          <button type="submit">Enregistrer</button>
+          <p id="edit-quiz-msg"></p>
           <button id="test-quiz-btn" class="is-hidden" type="button">Tester ce quiz</button>
         </form>
       </section>
     `,
     mount: () => {
-      const form = document.querySelector<HTMLFormElement>('#create-quiz-form')
-      const message = document.querySelector<HTMLParagraphElement>('#create-quiz-msg')
+      const form = document.querySelector<HTMLFormElement>('#edit-quiz-form')
+      const message = document.querySelector<HTMLParagraphElement>('#edit-quiz-msg')
       const testQuizButton = document.querySelector<HTMLButtonElement>('#test-quiz-btn')
       const questionsContainer = document.querySelector<HTMLDivElement>('#questions-container')
       const addQuestionButton = document.querySelector<HTMLButtonElement>('#add-question-btn')
+      const titleInput = document.querySelector<HTMLInputElement>('#quiz-title')
+      const descriptionInput = document.querySelector<HTMLInputElement>('#quiz-description')
 
-      if (!form || !questionsContainer || !addQuestionButton) {
+      if (!form || !questionsContainer || !addQuestionButton || !titleInput || !descriptionInput) {
         return
       }
 
@@ -89,9 +129,24 @@ export const renderCreateQuizPage = ({ isAuthenticated, navigate, apiPost }: Pag
         })
       }
 
-      const addQuestion = (): void => {
+      const addQuestion = (question?: EditableQuestion): void => {
         const index = questionsContainer.querySelectorAll('[data-question-item]').length
         questionsContainer.insertAdjacentHTML('beforeend', renderQuestionBlock(index))
+
+        const inserted = questionsContainer.querySelectorAll<HTMLDivElement>('[data-question-item]')[index]
+        if (inserted) {
+          const labelInput = inserted.querySelector<HTMLInputElement>('input[name="question-label"]')
+          const correctSelect = inserted.querySelector<HTMLSelectElement>('select[name="question-correct"]')
+
+          if (labelInput && question) {
+            labelInput.value = question.label
+          }
+
+          if (correctSelect && question) {
+            correctSelect.value = question.correctAnswer ? 'true' : 'false'
+          }
+        }
+
         refreshQuestionTitles()
       }
 
@@ -116,7 +171,43 @@ export const renderCreateQuizPage = ({ isAuthenticated, navigate, apiPost }: Pag
         addQuestion()
       })
 
-      addQuestion()
+      const loadQuiz = async (): Promise<void> => {
+        if (!Number.isFinite(quizId) || quizId <= 0) {
+          if (message) {
+            message.textContent = 'Quiz invalide.'
+          }
+          return
+        }
+
+        try {
+          const result = await apiGet(`/api/quizzes/${quizId}`)
+          const quiz = (result.quiz as Record<string, unknown> | undefined) ?? null
+
+          if (!quiz) {
+            throw new Error('Quiz introuvable')
+          }
+
+          titleInput.value = String(quiz.title ?? '')
+          descriptionInput.value = String(quiz.description ?? '')
+
+          const editableQuestions = extractEditableQuestions(quiz)
+          questionsContainer.innerHTML = ''
+
+          if (editableQuestions.length === 0) {
+            addQuestion()
+          } else {
+            editableQuestions.forEach((question) => addQuestion(question))
+          }
+
+          if (message) {
+            message.textContent = ''
+          }
+        } catch (error) {
+          if (message) {
+            message.textContent = `Erreur: ${escapeHtml((error as Error).message)}`
+          }
+        }
+      }
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault()
@@ -152,30 +243,24 @@ export const renderCreateQuizPage = ({ isAuthenticated, navigate, apiPost }: Pag
             payload.description = description
           }
 
-          const result = await apiPost('/api/quizzes', payload)
-          const quiz = (result.quiz as Record<string, unknown> | undefined) ?? undefined
-          const quizId = quiz && typeof quiz.id === 'number' ? quiz.id : null
+          await apiPut(`/api/quizzes/${quizId}`, payload)
 
           if (message) {
-            message.textContent = quizId
-              ? `Quiz créé avec succès ✅ (ID: ${quizId})`
-              : 'Quiz créé avec succès ✅'
+            message.textContent = 'Quiz mis à jour ✅'
           }
 
-          if (testQuizButton && quizId) {
+          if (testQuizButton) {
             testQuizButton.classList.remove('is-hidden')
             testQuizButton.onclick = () => navigate(`/play-quiz/${quizId}`)
           }
-
-          form.reset()
-          questionsContainer.innerHTML = ''
-          addQuestion()
         } catch (error) {
           if (message) {
             message.textContent = `Erreur: ${(error as Error).message}`
           }
         }
       })
+
+      void loadQuiz()
     },
   }
 }

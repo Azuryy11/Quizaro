@@ -8,6 +8,7 @@ import { renderRegisterPage } from './pages/registerPage'
 import { renderCreateQuizPage } from './pages/createQuizPage'
 import { renderPlayQuizPage } from './pages/playQuizPage'
 import { renderMyQuizzesPage } from './pages/myQuizzesPage'
+import { renderEditQuizPage } from './pages/editQuizPage'
 import type { PageContext, PageRenderResult } from './pages/types'
 
 const app = document.querySelector<HTMLDivElement>('#app')
@@ -38,6 +39,23 @@ const fetchApi = async (path: string): Promise<Record<string, unknown>> => {
     }
 
     return fetch(buildApiUrl(path), { credentials: 'include' }).then(parseJsonResponse)
+  }
+}
+
+const fetchApiJson = async (
+  path: string,
+  options: Omit<RequestInit, 'credentials'>,
+): Promise<Record<string, unknown>> => {
+  const request = (url: string) => fetch(url, { ...options, credentials: 'include' }).then(parseJsonResponse)
+
+  try {
+    return await request(path)
+  } catch (error) {
+    if (!apiBaseUrl) {
+      throw error
+    }
+
+    return request(buildApiUrl(path))
   }
 }
 
@@ -76,6 +94,12 @@ const renderPageByRoute = (route: string, context: PageContext): PageRenderResul
     return renderMyQuizzesPage(context)
   }
 
+  const editRouteMatch = route.match(/^\/edit-quiz\/(\d+)$/)
+  if (editRouteMatch) {
+    const quizId = Number(editRouteMatch[1])
+    return renderEditQuizPage(context, quizId)
+  }
+
   const playRouteMatch = route.match(/^\/play-quiz\/(\d+)$/)
   if (playRouteMatch) {
     const quizId = Number(playRouteMatch[1])
@@ -101,25 +125,28 @@ const renderPageByRoute = (route: string, context: PageContext): PageRenderResul
 }
 
 const apiPost = async (path: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> => {
-  const request = (url: string) =>
-    fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    }).then(parseJsonResponse)
-
-  try {
-    return await request(path)
-  } catch (error) {
-    if (!apiBaseUrl) {
-      throw error
-    }
-    return request(buildApiUrl(path))
-  }
+  return fetchApiJson(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
 }
+
+const apiPut = async (path: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> =>
+  fetchApiJson(path, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+const apiDelete = async (path: string): Promise<Record<string, unknown>> =>
+  fetchApiJson(path, {
+    method: 'DELETE',
+  })
 
 const escapeHtml = (value: string): string =>
   value
@@ -158,6 +185,8 @@ if (app) {
       navigate,
       apiGet: fetchApi,
       apiPost,
+      apiPut,
+      apiDelete,
     }
     const page = renderPageByRoute(route, pageContext)
 
@@ -170,7 +199,7 @@ if (app) {
 
     page.mount?.()
 
-    const logoutButton = document.querySelector<HTMLButtonElement>('#logout-btn')
+    const logoutButton = document.querySelector<HTMLElement>('#logout-btn')
     if (logoutButton) {
       logoutButton.addEventListener('click', async () => {
         await apiPost('/api/auth/logout', {})

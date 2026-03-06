@@ -127,7 +127,7 @@ final class ApiQuizController extends AbstractController
     {
         /** @var User|null $user */
         $user = $this->getUser();
-
+    
         if (null === $user) {
             return $this->json([
                 'message' => 'Connecte-toi pour envoyer tes réponses.',

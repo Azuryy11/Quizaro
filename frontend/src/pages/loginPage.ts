@@ -1,5 +1,6 @@
 import type { PageContext, PageRenderResult } from './types'
 import feather from 'feather-icons'
+import { setupPasswordVisibilityToggle } from '../utils/passwordVisibility'
 
 export const renderLoginPage = ({ apiPost, navigate }: PageContext): PageRenderResult => {
   return {
@@ -34,12 +35,7 @@ export const renderLoginPage = ({ apiPost, navigate }: PageContext): PageRenderR
       const togglePasswordButton = document.querySelector<HTMLButtonElement>('#toggle-login-password')
 
       if (passwordInput && togglePasswordButton) {
-        togglePasswordButton.addEventListener('click', () => {
-          const isHidden = passwordInput.type === 'password'
-          passwordInput.type = isHidden ? 'text' : 'password'
-          togglePasswordButton.classList.toggle('is-visible', isHidden)
-          togglePasswordButton.setAttribute('aria-label', isHidden ? 'Masquer le mot de passe' : 'Afficher le mot de passe')
-        })
+        setupPasswordVisibilityToggle(passwordInput, togglePasswordButton)
       }
 
       loginForm.addEventListener('submit', async (event) => {
@@ -55,7 +51,7 @@ export const renderLoginPage = ({ apiPost, navigate }: PageContext): PageRenderR
           if (message) {
             message.textContent = 'Connexion réussie ✅'
           }
-          navigate('/home')
+          navigate('/')
         } catch (error) {
           if (message) {
             message.textContent = `Erreur: ${(error as Error).message}`

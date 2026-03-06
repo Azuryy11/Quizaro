@@ -14,15 +14,15 @@ class UserAnswer
     private ?int $id = null;
 
     #[ORM\ManyToOne(inversedBy: 'userAnswers')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private ?PlayerSession $playerSession = null;
 
     #[ORM\ManyToOne(inversedBy: 'userAnswers')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private ?Question $question = null;
 
     #[ORM\ManyToOne(inversedBy: 'userAnswers')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     private ?Answer $answer = null;
 
     #[ORM\Column]

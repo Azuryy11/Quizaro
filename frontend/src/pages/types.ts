@@ -12,4 +12,6 @@ export type PageContext = {
   navigate: (route: string) => void
   apiGet: (path: string) => Promise<Record<string, unknown>>
   apiPost: (path: string, payload: Record<string, unknown>) => Promise<Record<string, unknown>>
+  apiPut: (path: string, payload: Record<string, unknown>) => Promise<Record<string, unknown>>
+  apiDelete: (path: string) => Promise<Record<string, unknown>>
 }

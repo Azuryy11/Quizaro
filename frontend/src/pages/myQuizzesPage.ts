@@ -1,6 +1,6 @@
 import type { PageContext, PageRenderResult } from './types'
 
-export const renderMyQuizzesPage = ({ isAuthenticated, navigate, apiGet, escapeHtml }: PageContext): PageRenderResult => {
+export const renderMyQuizzesPage = ({ isAuthenticated, navigate, apiGet, apiDelete, escapeHtml }: PageContext): PageRenderResult => {
   if (!isAuthenticated) {
     return {
       content: `
@@ -53,10 +53,12 @@ export const renderMyQuizzesPage = ({ isAuthenticated, navigate, apiGet, escapeH
               const questionsCount = Number(quiz.questionsCount ?? 0)
 
               return `
-                <div class="card" style="margin-top:1rem;">
+                <div class="card card--spaced">
                   <h3>${quizTitle}</h3>
                   <p>${questionsCount} question(s)</p>
                   <button type="button" data-play-quiz="${quizId}">Jouer</button>
+                  <button type="button" data-edit-quiz="${quizId}">Modifier</button>
+                  <button type="button" data-delete-quiz="${quizId}">Supprimer</button>
                 </div>
               `
             })
@@ -69,20 +71,65 @@ export const renderMyQuizzesPage = ({ isAuthenticated, navigate, apiGet, escapeH
       listContainer.addEventListener('click', (event) => {
         const target = event.target as HTMLElement | null
         const playButton = target?.closest<HTMLButtonElement>('[data-play-quiz]')
-
-        if (!playButton) {
-          return
-        }
-
-        const quizId = Number(playButton.getAttribute('data-play-quiz') ?? '0')
-        if (!Number.isFinite(quizId) || quizId <= 0) {
-          if (message) {
-            message.textContent = 'Quiz invalide.'
+        if (playButton) {
+          const quizId = Number(playButton.getAttribute('data-play-quiz') ?? '0')
+          if (!Number.isFinite(quizId) || quizId <= 0) {
+            if (message) {
+              message.textContent = 'Quiz invalide.'
+            }
+            return
           }
+
+          navigate(`/play-quiz/${quizId}`)
           return
         }
 
-        navigate(`/play-quiz/${quizId}`)
+        const editButton = target?.closest<HTMLButtonElement>('[data-edit-quiz]')
+        if (editButton) {
+          const quizId = Number(editButton.getAttribute('data-edit-quiz') ?? '0')
+          if (!Number.isFinite(quizId) || quizId <= 0) {
+            if (message) {
+              message.textContent = 'Quiz invalide.'
+            }
+            return
+          }
+
+          navigate(`/edit-quiz/${quizId}`)
+          return
+        }
+
+        const deleteButton = target?.closest<HTMLButtonElement>('[data-delete-quiz]')
+        if (deleteButton) {
+          const quizId = Number(deleteButton.getAttribute('data-delete-quiz') ?? '0')
+          if (!Number.isFinite(quizId) || quizId <= 0) {
+            if (message) {
+              message.textContent = 'Quiz invalide.'
+            }
+            return
+          }
+
+          const confirmed = window.confirm('Etes-vous sûr de vouloir supprimer ce quiz ?')
+          if (!confirmed) {
+            return
+          }
+
+          void (async () => {
+            if (message) {
+              message.textContent = 'Suppression en cours...'
+            }
+            try {
+              await apiDelete(`/api/quizzes/${quizId}`)
+              if (message) {
+                message.textContent = 'Quiz supprimé'
+              }
+              await loadQuizzes()
+            } catch (error) {
+              if (message) {
+                message.textContent = `Erreur: ${(error as Error).message}`
+              }
+            }
+          })()
+        }
       })
 
       void loadQuizzes()

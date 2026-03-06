@@ -57,7 +57,7 @@ final class ApiController extends AbstractController
             'displayName' => $user->getDisplayName() ?: 'Non défini',
             'roles' => $user->getRoles(),
             'quizzesCount' => $user->getQuizzes()->count(),
-            'scoresCount' => $user->getScores()->count(),
+            'scoresCount' => 0,
         ]);
     }
 }

@@ -1,5 +1,6 @@
 import type { PageContext, PageRenderResult } from './types'
 import feather from 'feather-icons'
+import { setupPasswordVisibilityToggle } from '../utils/passwordVisibility'
 
 export const renderRegisterPage = ({ apiPost, navigate }: PageContext): PageRenderResult => {
   return {
@@ -40,24 +41,20 @@ export const renderRegisterPage = ({ apiPost, navigate }: PageContext): PageRend
 
       feather.replace()
 
-      const toggleVisibility = (inputId: string, buttonId: string): void => {
-        const input = document.querySelector<HTMLInputElement>(`#${inputId}`)
-        const button = document.querySelector<HTMLButtonElement>(`#${buttonId}`)
-
-        if (!input || !button) {
-          return
-        }
-
-        button.addEventListener('click', () => {
-          const isHidden = input.type === 'password'
-          input.type = isHidden ? 'text' : 'password'
-          button.classList.toggle('is-visible', isHidden)
-          button.setAttribute('aria-label', isHidden ? 'Masquer le mot de passe' : 'Afficher le mot de passe')
-        })
+      const passwordInput = document.querySelector<HTMLInputElement>('#password')
+      const passwordToggle = document.querySelector<HTMLButtonElement>('#toggle-password')
+      if (passwordInput && passwordToggle) {
+        setupPasswordVisibilityToggle(passwordInput, passwordToggle)
       }
 
-      toggleVisibility('password', 'toggle-password')
-      toggleVisibility('verifpassword', 'toggle-verifpassword')
+      const verifyPasswordInput = document.querySelector<HTMLInputElement>('#verifpassword')
+      const verifyPasswordToggle = document.querySelector<HTMLButtonElement>('#toggle-verifpassword')
+      if (verifyPasswordInput && verifyPasswordToggle) {
+        setupPasswordVisibilityToggle(verifyPasswordInput, verifyPasswordToggle, {
+          whenHidden: 'Afficher la confirmation du mot de passe',
+          whenVisible: 'Masquer la confirmation du mot de passe',
+        })
+      }
 
       registerForm.addEventListener('submit', async (event) => {
         event.preventDefault()
