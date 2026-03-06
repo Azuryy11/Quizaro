@@ -41,14 +41,16 @@ const renderQuestionBlock = (index: number): string => {
   return `
     <div class="card" data-question-item>
       <h3>Question ${questionNumber}</h3>
-      <label>Label</label>
+      <label>Énoncé de la question :</label>
       <input name="question-label" type="text" maxlength="180" required>
 
-      <label>Bonne réponse</label>
-      <select name="question-correct" required>
-        <option value="true">Vrai</option>
-        <option value="false">Faux</option>
-      </select>
+      <div class="textarea-container">
+        <label>Bonne réponse</label>
+        <select name="question-correct" required>
+          <option value="true">Vrai</option>
+          <option value="false">Faux</option>
+        </select>
+      </div>
 
       <button type="button" data-remove-question>Supprimer la question</button>
     </div>
@@ -93,12 +95,15 @@ export const renderEditQuizPage = (
           <button id="add-question-btn" type="button">Ajouter une question</button>
 
           <button type="submit">Enregistrer</button>
+          <br>
+          <button id="back-to-my-quizzes" type="button">Retourner à mes quiz</button>
           <p id="edit-quiz-msg"></p>
           <button id="test-quiz-btn" class="is-hidden" type="button">Tester ce quiz</button>
         </form>
       </section>
     `,
     mount: () => {
+      const backButton = document.querySelector<HTMLButtonElement>('#back-to-my-quizzes')
       const form = document.querySelector<HTMLFormElement>('#edit-quiz-form')
       const message = document.querySelector<HTMLParagraphElement>('#edit-quiz-msg')
       const testQuizButton = document.querySelector<HTMLButtonElement>('#test-quiz-btn')
@@ -106,6 +111,10 @@ export const renderEditQuizPage = (
       const addQuestionButton = document.querySelector<HTMLButtonElement>('#add-question-btn')
       const titleInput = document.querySelector<HTMLInputElement>('#quiz-title')
       const descriptionInput = document.querySelector<HTMLInputElement>('#quiz-description')
+
+      if (backButton) {
+        backButton.addEventListener('click', () => navigate('/my-quizzes'))
+      }
 
       if (!form || !questionsContainer || !addQuestionButton || !titleInput || !descriptionInput) {
         return

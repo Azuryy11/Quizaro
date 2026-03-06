@@ -42,12 +42,6 @@ export const renderProfilePage = ({ isAuthenticated, me, escapeHtml, navigate, a
           <button id="open-my-quizzes">Mes quiz</button>
         </div>
 
-        <div class="profile-actions">
-          <h4>Mes quiz</h4>
-          <p id="profile-quizzes-msg"></p>
-          <div id="profile-quizzes-list">Chargement...</div>
-        </div>
-
         ${isAdmin
           ? `
             <div class="profile-admin-action">

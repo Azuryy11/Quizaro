@@ -23,3 +23,7 @@
 /.env
 /.env.test
 /.env.dev
+
+# Local API scratch files
+/tmp*.json
+/tmpcookies.txt

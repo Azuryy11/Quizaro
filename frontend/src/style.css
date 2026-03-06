@@ -86,6 +86,17 @@ form {
   gap: 0.75rem;
 }
 
+form input,
+form select,
+form textarea {
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.textarea-container {
+  padding: 1rem;
+}
 label {
   font-weight: 600;
   font-size: 0.95rem;
@@ -195,6 +206,11 @@ button:hover {
 
 .play-quiz-question {
   margin-top: 1rem;
+}
+
+.play-quiz-question p {
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
 }
 
 .play-quiz-submit {
