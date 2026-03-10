@@ -53,9 +53,18 @@ export const renderLoginPage = ({ apiPost, navigate }: PageContext): PageRenderR
           }
           navigate('/')
         } catch (error) {
-          if (message) {
-            message.textContent = `Erreur: ${(error as Error).message}`
+          const maybeApiError = error as { message?: string; status?: number }
+
+          if (!message) {
+            return
           }
+
+          if (maybeApiError.status === 401) {
+            message.textContent = maybeApiError.message ?? "L'email ou le mot de passe est incorrect"
+            return
+          }
+
+          message.textContent = `Erreur: ${maybeApiError.message ?? 'inconnue'}`
         }
       })
     },

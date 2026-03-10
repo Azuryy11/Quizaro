@@ -5,6 +5,7 @@ namespace App\Controller;
 use App\Entity\Answer;
 use App\Entity\PlayerSession;
 use App\Entity\Question;
+use App\Entity\QuestionAnswer;
 use App\Entity\Quiz;
 use App\Entity\QuizSession;
 use App\Entity\User;
@@ -101,6 +102,7 @@ final class ApiQuizController extends AbstractController
         $quizSession->setQuiz($quiz);
         $quizSession->setCode(strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)));
         $quizSession->setStatus(QuizSession::STATUS_RUNNING);
+        $quizSession->setOwner($user);
 
         $playerSession = new PlayerSession();
         $playerSession->setQuizSession($quizSession);
@@ -116,9 +118,142 @@ final class ApiQuizController extends AbstractController
                 'playerSessionId' => $playerSession->getId(),
                 'quizSessionId' => $quizSession->getId(),
                 'code' => $quizSession->getCode(),
+                'status' => $quizSession->getStatus(),
+                'isOwner' => true,
                 'startedAt' => $quizSession->getStartedAt()->format(DATE_ATOM),
             ],
             'quiz' => $this->normalizeQuizForPlay($quiz),
+        ]);
+    }
+
+    #[Route('/api/quiz-sessions/join', name: 'api_quiz_sessions_join', methods: ['POST'])]
+    public function joinSession(Request $request, EntityManagerInterface $entityManager): JsonResponse
+    {
+        /** @var User|null $user */
+        $user = $this->getUser();
+
+        if (null === $user) {
+            return $this->json([
+                'message' => 'Connecte-toi pour rejoindre une session.',
+            ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $payload = $this->decodeJsonPayload($request);
+        if ($payload instanceof JsonResponse) {
+            return $payload;
+        }
+
+        $codeValue = $payload['code'] ?? null;
+        if (!is_string($codeValue)) {
+            return $this->json([
+                'message' => 'Le code de session est requis.',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        $code = strtoupper(trim($codeValue));
+        if ('' === $code) {
+            return $this->json([
+                'message' => 'Le code de session est requis.',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        $quizSession = $entityManager->getRepository(QuizSession::class)->findOneBy(['code' => $code]);
+
+        if (!$quizSession instanceof QuizSession) {
+            return $this->json([
+                'message' => 'Session introuvable.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        if (QuizSession::STATUS_FINISHED === $quizSession->getStatus()) {
+            return $this->json([
+                'message' => 'Cette session est terminée.',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        $quiz = $quizSession->getQuiz();
+        if (!$quiz instanceof Quiz) {
+            return $this->json([
+                'message' => 'Quiz introuvable pour cette session.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $playerSession = $entityManager->getRepository(PlayerSession::class)->findOneBy([
+            'quizSession' => $quizSession,
+            'user' => $user,
+        ]);
+
+        if (!$playerSession instanceof PlayerSession) {
+            $playerSession = new PlayerSession();
+            $playerSession->setQuizSession($quizSession);
+            $playerSession->setUser($user);
+            $playerSession->setNickname($user->getDisplayName() ?: $user->getUserIdentifier());
+
+            $entityManager->persist($playerSession);
+            $entityManager->flush();
+        }
+
+        return $this->json([
+            'session' => [
+                'playerSessionId' => $playerSession->getId(),
+                'quizSessionId' => $quizSession->getId(),
+                'code' => $quizSession->getCode(),
+                'status' => $quizSession->getStatus(),
+                'isOwner' => $quizSession->getOwner()?->getId() === $user->getId(),
+                'startedAt' => $quizSession->getStartedAt()->format(DATE_ATOM),
+            ],
+            'quiz' => $this->normalizeQuizForPlay($quiz),
+        ]);
+    }
+
+    #[Route('/api/quiz-sessions/{id}/finish', name: 'api_quiz_sessions_finish', methods: ['POST'])]
+    public function finishSession(int $id, EntityManagerInterface $entityManager): JsonResponse
+    {
+        /** @var User|null $user */
+        $user = $this->getUser();
+
+        if (null === $user) {
+            return $this->json([
+                'message' => 'Connecte-toi pour finir une session.',
+            ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $quizSession = $entityManager->getRepository(QuizSession::class)->find($id);
+        if (!$quizSession instanceof QuizSession) {
+            return $this->json([
+                'message' => 'Session introuvable.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($quizSession->getOwner()?->getId() !== $user->getId()) {
+            return $this->json([
+                'message' => 'Seul le propriétaire peut finir la session.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        if (QuizSession::STATUS_FINISHED === $quizSession->getStatus()) {
+            return $this->json([
+                'message' => 'La session est déjà terminée.',
+                'session' => [
+                    'quizSessionId' => $quizSession->getId(),
+                    'status' => $quizSession->getStatus(),
+                    'endedAt' => $quizSession->getEndedAt()?->format(DATE_ATOM),
+                ],
+            ]);
+        }
+
+        $quizSession->setStatus(QuizSession::STATUS_FINISHED);
+        $quizSession->setEndedAt(new \DateTimeImmutable());
+
+        $entityManager->flush();
+
+        return $this->json([
+            'message' => 'Session terminée.',
+            'session' => [
+                'quizSessionId' => $quizSession->getId(),
+                'status' => $quizSession->getStatus(),
+                'endedAt' => $quizSession->getEndedAt()?->format(DATE_ATOM),
+            ],
         ]);
     }
 
@@ -142,23 +277,24 @@ final class ApiQuizController extends AbstractController
             ], Response::HTTP_NOT_FOUND);
         }
 
-        if (!$this->canAccessQuiz($quiz, $user)) {
-            return $this->json([
-                'message' => 'Accès refusé à ce quiz.',
-            ], Response::HTTP_FORBIDDEN);
-        }
-
         $payload = $this->decodeJsonPayload($request);
         if ($payload instanceof JsonResponse) {
             return $payload;
         }
 
         $playerSessionId = $payload['playerSessionId'] ?? null;
+        $quizSessionId = $payload['quizSessionId'] ?? null;
         $answersValue = $payload['answers'] ?? null;
 
         if (!is_int($playerSessionId)) {
             return $this->json([
                 'message' => 'playerSessionId est requis.',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (null !== $quizSessionId && !is_int($quizSessionId)) {
+            return $this->json([
+                'message' => 'quizSessionId doit être un entier.',
             ], Response::HTTP_BAD_REQUEST);
         }
 
@@ -169,6 +305,16 @@ final class ApiQuizController extends AbstractController
         }
 
         $playerSession = $entityManager->getRepository(PlayerSession::class)->find($playerSessionId);
+        if (!$playerSession instanceof PlayerSession && is_int($quizSessionId)) {
+            $quizSessionForLookup = $entityManager->getRepository(QuizSession::class)->find($quizSessionId);
+            if ($quizSessionForLookup instanceof QuizSession) {
+                $playerSession = $entityManager->getRepository(PlayerSession::class)->findOneBy([
+                    'quizSession' => $quizSessionForLookup,
+                    'user' => $user,
+                ]);
+            }
+        }
+
         if (!$playerSession instanceof PlayerSession) {
             return $this->json([
                 'message' => 'Session joueur introuvable.',
@@ -185,6 +331,12 @@ final class ApiQuizController extends AbstractController
         if (!$quizSession instanceof QuizSession || $quizSession->getQuiz()?->getId() !== $quiz->getId()) {
             return $this->json([
                 'message' => 'Cette session ne correspond pas à ce quiz.',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (QuizSession::STATUS_FINISHED === $quizSession->getStatus()) {
+            return $this->json([
+                'message' => 'Cette session est terminée.',
             ], Response::HTTP_BAD_REQUEST);
         }
 
@@ -282,8 +434,6 @@ final class ApiQuizController extends AbstractController
 
         $playerSession->setScore($score);
         $playerSession->setFinishedAt(new \DateTimeImmutable());
-        $quizSession->setStatus(QuizSession::STATUS_FINISHED);
-        $quizSession->setEndedAt(new \DateTimeImmutable());
 
         $entityManager->flush();
 
@@ -554,8 +704,8 @@ final class ApiQuizController extends AbstractController
      */
     private function hydrateQuestions(Quiz $quiz, array $questions, EntityManagerInterface $entityManager): void
     {
-        $answerTrue = $this->getOrCreateBooleanAnswer($entityManager, 'VRAI', true, 1);
-        $answerFalse = $this->getOrCreateBooleanAnswer($entityManager, 'FAUX', false, 2);
+        $answerTrue = $this->getOrCreateBooleanAnswer($entityManager, 'VRAI');
+        $answerFalse = $this->getOrCreateBooleanAnswer($entityManager, 'FAUX');
 
         foreach ($questions as $index => $questionPayload) {
             $question = new Question();
@@ -565,35 +715,36 @@ final class ApiQuizController extends AbstractController
             $question->setTimeLimit(30);
             $question->setPosition($index + 1);
 
-            $question->addAnswer($answerTrue);
-            $question->addAnswer($answerFalse);
-            $question->setCorrectAnswer(true === $questionPayload['correctAnswer'] ? $answerTrue : $answerFalse);
+            $correctIsTrue = true === $questionPayload['correctAnswer'];
+
+            $question->addQuestionAnswer(
+                (new QuestionAnswer())
+                    ->setAnswer($answerTrue)
+                    ->setPosition(1)
+                    ->setIsCorrect($correctIsTrue),
+            );
+
+            $question->addQuestionAnswer(
+                (new QuestionAnswer())
+                    ->setAnswer($answerFalse)
+                    ->setPosition(2)
+                    ->setIsCorrect(!$correctIsTrue),
+            );
 
             $entityManager->persist($question);
         }
     }
 
-    private function getOrCreateBooleanAnswer(EntityManagerInterface $entityManager, string $content, bool $isCorrect, int $position): Answer
+    private function getOrCreateBooleanAnswer(EntityManagerInterface $entityManager, string $content): Answer
     {
         $answer = $entityManager->getRepository(Answer::class)->findOneBy(['content' => $content]);
 
         if ($answer instanceof Answer) {
-            if ($answer->isCorrect() !== $isCorrect) {
-                $answer->setIsCorrect($isCorrect);
-            }
-
-            if ($answer->getPosition() !== $position) {
-                $answer->setPosition($position);
-            }
-
             return $answer;
         }
 
         $answer = new Answer();
         $answer->setContent($content);
-        $answer->setIsCorrect($isCorrect);
-        $answer->setPosition($position);
-
         $entityManager->persist($answer);
 
         return $answer;
@@ -618,11 +769,11 @@ final class ApiQuizController extends AbstractController
         );
 
         $normalizedQuestions = array_map(function (Question $question): array {
-            $answers = $question->getAnswers()->toArray();
+            $questionAnswers = $question->getQuestionAnswers()->toArray();
 
             usort(
-                $answers,
-                fn (Answer $left, Answer $right): int => (int) ($left->getPosition() ?? 0) <=> (int) ($right->getPosition() ?? 0),
+                $questionAnswers,
+                static fn (QuestionAnswer $left, QuestionAnswer $right): int => $left->getPosition() <=> $right->getPosition(),
             );
 
             return [
@@ -630,12 +781,16 @@ final class ApiQuizController extends AbstractController
                 'label' => $question->getLabel(),
                 'type' => $question->getType(),
                 'position' => $question->getPosition(),
-                'answers' => array_map(static fn (Answer $answer): array => [
-                    'id' => $answer->getId(),
-                    'content' => $answer->getContent(),
-                    'isCorrect' => $question->getCorrectAnswer()?->getId() === $answer->getId(),
-                    'position' => $answer->getPosition(),
-                ], $answers),
+                'answers' => array_map(static function (QuestionAnswer $questionAnswer): array {
+                    $answer = $questionAnswer->getAnswer();
+
+                    return [
+                        'id' => $answer?->getId(),
+                        'content' => $answer?->getContent() ?? '',
+                        'isCorrect' => $questionAnswer->isCorrect(),
+                        'position' => $questionAnswer->getPosition(),
+                    ];
+                }, $questionAnswers),
             ];
         }, $questions);
 
@@ -659,18 +814,19 @@ final class ApiQuizController extends AbstractController
 
         usort(
             $questions,
-            fn (Question $left, Question $right): int => $left->getPosition() <=> $right->getPosition(),
+            static fn (Question $left, Question $right): int => $left->getPosition() <=> $right->getPosition(),
         );
 
         return [
             'id' => $quiz->getId(),
             'title' => $quiz->getTitle(),
             'description' => $quiz->getDescription(),
-            'questions' => array_map(function (Question $question): array {
-                $answers = $question->getAnswers()->toArray();
+            'questions' => array_map(static function (Question $question): array {
+                $questionAnswers = $question->getQuestionAnswers()->toArray();
+
                 usort(
-                    $answers,
-                    fn (Answer $left, Answer $right): int => $left->getPosition() <=> $right->getPosition(),
+                    $questionAnswers,
+                    static fn (QuestionAnswer $left, QuestionAnswer $right): int => $left->getPosition() <=> $right->getPosition(),
                 );
 
                 return [
@@ -679,11 +835,15 @@ final class ApiQuizController extends AbstractController
                     'type' => $question->getType(),
                     'timeLimit' => $question->getTimeLimit(),
                     'position' => $question->getPosition(),
-                    'answers' => array_map(static fn (Answer $answer): array => [
-                        'id' => $answer->getId(),
-                        'content' => $answer->getContent(),
-                        'position' => $answer->getPosition(),
-                    ], $answers),
+                    'answers' => array_map(static function (QuestionAnswer $questionAnswer): array {
+                        $answer = $questionAnswer->getAnswer();
+
+                        return [
+                            'id' => $answer?->getId(),
+                            'content' => $answer?->getContent() ?? '',
+                            'position' => $questionAnswer->getPosition(),
+                        ];
+                    }, $questionAnswers),
                 ];
             }, $questions),
         ];

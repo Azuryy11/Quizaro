@@ -16,18 +16,47 @@ const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.re
 const buildApiUrl = (path: string): string => (apiBaseUrl ? `${apiBaseUrl}${path}` : path)
 
 const parseJsonResponse = async (response: Response): Promise<Record<string, unknown>> => {
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`)
+  const contentType = response.headers.get('content-type') ?? ''
+  const bodyText = await response.text()
+  const isJson = contentType.includes('application/json')
+
+  const buildApiError = (message: string): Error & { status: number } => {
+    const error = new Error(message) as Error & { status: number }
+    error.status = response.status
+    return error
   }
 
-  const contentType = response.headers.get('content-type') ?? ''
-  const body = await response.text()
+  if (!isJson) {
+    if (!response.ok) {
+      throw buildApiError(`HTTP ${response.status}`)
+    }
 
-  if (!contentType.includes('application/json')) {
     throw new Error('Réponse non JSON (vérifie URL/proxy API)')
   }
 
-  return JSON.parse(body) as Record<string, unknown>
+  const trimmedBody = bodyText.trim()
+  const data = trimmedBody === '' ? undefined : ((): unknown => {
+    try {
+      return JSON.parse(trimmedBody) as unknown
+    } catch {
+      return undefined
+    }
+  })()
+
+  if (!response.ok) {
+    const backendMessage =
+      data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string'
+        ? String((data as { message?: unknown }).message)
+        : `HTTP ${response.status}`
+
+    throw buildApiError(backendMessage)
+  }
+
+  if (trimmedBody !== '' && (!data || typeof data !== 'object')) {
+    throw new Error('Réponse JSON invalide')
+  }
+
+  return (data ?? {}) as Record<string, unknown>
 }
 
 const fetchApi = async (path: string): Promise<Record<string, unknown>> => {
@@ -112,7 +141,7 @@ const renderPageByRoute = (route: string, context: PageContext): PageRenderResul
         content: `
           <section class="card">
             <h2>Accès refusé</h2>
-            <p>Cette page est réservée aux administrateurs.</p>
+            <p>Cette page est réservée aux administrateurs</p>
           </section>
         `,
       }

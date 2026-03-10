@@ -47,26 +47,26 @@ final class ApiAuthController extends AbstractController
         $payload = json_decode($request->getContent(), true);
 
         if (!is_array($payload)) {
-            return $this->json(['message' => 'Payload JSON invalide.'], 400);
+            return $this->json(['message' => 'Payload JSON invalide'], 400);
         }
 
         $email = isset($payload['email']) ? trim((string) $payload['email']) : '';
         $password = isset($payload['password']) ? (string) $payload['password'] : '';
 
         if ('' === $email || '' === $password) {
-            return $this->json(['message' => 'Email et mot de passe requis.'], 400);
+            return $this->json(['message' => 'Email et mot de passe requis'], 400);
         }
 
         $user = $entityManager->getRepository(User::class)->findOneBy(['email' => $email]);
 
         if (!$user instanceof User || !$passwordHasher->isPasswordValid($user, $password)) {
-            return $this->json(['message' => 'Identifiants invalides.'], 401);
+            return $this->json(['message' => 'Identifiants invalides'], 401);
         }
 
         $security->login($user);
 
         return $this->json([
-            'message' => 'Connexion réussie.',
+            'message' => 'Connexion réussie',
             'authenticated' => true,
         ]);
     }
@@ -81,7 +81,7 @@ final class ApiAuthController extends AbstractController
         $payload = json_decode($request->getContent(), true);
 
         if (!is_array($payload)) {
-            return $this->json(['message' => 'Payload JSON invalide.'], 400);
+            return $this->json(['message' => 'Payload JSON invalide'], 400);
         }
 
         $email = isset($payload['email']) ? trim((string) $payload['email']) : '';
@@ -89,16 +89,16 @@ final class ApiAuthController extends AbstractController
         $displayName = isset($payload['displayName']) ? trim((string) $payload['displayName']) : null;
 
         if ('' === $email || '' === $password) {
-            return $this->json(['message' => 'Email et mot de passe requis.'], 400);
+            return $this->json(['message' => 'Email et mot de passe requis'], 400);
         }
 
         if (strlen($password) < 8) {
-            return $this->json(['message' => 'Le mot de passe doit contenir au moins 8 caractères.'], 400);
+            return $this->json(['message' => 'Le mot de passe doit contenir au moins 8 caractères'], 400);
         }
 
         $existingUser = $entityManager->getRepository(User::class)->findOneBy(['email' => $email]);
         if ($existingUser instanceof User) {
-            return $this->json(['message' => 'Cet email est déjà utilisé.'], 409);
+            return $this->json(['message' => 'Cet email est déjà utilisé'], 409);
         }
 
         $user = new User();

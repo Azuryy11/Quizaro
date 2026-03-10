@@ -1,5 +1,4 @@
 import type { PageContext, PageRenderResult } from './types'
-import { prewarmQuizSession } from '../sessionWarmupCache'
 
 export const renderProfilePage = ({ isAuthenticated, me, escapeHtml, navigate, apiGet, apiDelete }: PageContext): PageRenderResult => {
   if (!isAuthenticated) {
@@ -54,23 +53,6 @@ export const renderProfilePage = ({ isAuthenticated, me, escapeHtml, navigate, a
     mount: () => {
       const listContainer = document.querySelector<HTMLDivElement>('#profile-quizzes-list')
       const listMessage = document.querySelector<HTMLParagraphElement>('#profile-quizzes-msg')
-
-      const prewarmSessions = async (): Promise<void> => {
-        try {
-          const response = await apiGet('/api/quizzes')
-          const quizzes = Array.isArray(response.quizzes) ? response.quizzes : []
-
-          quizzes.forEach((rawQuiz) => {
-            const quiz = rawQuiz as Record<string, unknown>
-            const quizId = Number(quiz.id ?? 0)
-            void prewarmQuizSession(apiGet, quizId)
-          })
-        } catch {
-          return
-        }
-      }
-
-      void prewarmSessions()
 
       const loadQuizzes = async (): Promise<void> => {
         if (!listContainer) {

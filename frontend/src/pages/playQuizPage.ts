@@ -94,6 +94,8 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           const session = (result.session as Record<string, unknown> | undefined) ?? undefined
           const playerSessionId = Number(session?.playerSessionId ?? 0)
           const sessionCode = String(session?.code ?? '').trim()
+          const quizSessionId = Number(session?.quizSessionId ?? 0)
+          const isOwner = Boolean(session?.isOwner)
 
           if (!quiz) {
             container.innerHTML = '<p>Quiz introuvable.</p>'
@@ -116,6 +118,9 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           container.innerHTML = `
             <h3>${title}</h3>
             ${sessionCode ? '<div class="session-code-banner">Code de session : ' + escapeHtml(sessionCode) + '</div>' : 'Aucun code généré'}
+            ${isOwner && Number.isFinite(quizSessionId) && quizSessionId > 0
+              ? '<button id="finish-quiz-session" class="play-quiz-submit" type="button">Finir la session</button>'
+              : ''}
            <form id="play-quiz-form">
               ${questions
                 .map(
@@ -148,6 +153,25 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
             return
           }
 
+          const finishButton = document.querySelector<HTMLButtonElement>('#finish-quiz-session')
+          if (finishButton) {
+            finishButton.addEventListener('click', async () => {
+              try {
+                const finishResult = await apiPost(`/api/quiz-sessions/${quizSessionId}/finish`, {})
+                const finishSession = (finishResult.session as Record<string, unknown> | undefined) ?? undefined
+                const status = String(finishSession?.status ?? 'FINISHED')
+                if (message) {
+                  message.textContent = `Session terminée (${status}).`
+                  navigate('/')
+                }
+              } catch (error) {
+                if (message) {
+                  message.textContent = (error as Error).message
+                }
+              }
+            })
+          }
+
           form.addEventListener('submit', async (event) => {
             event.preventDefault()
 
@@ -168,6 +192,7 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
             try {
               const submitResult = await apiPost(`/api/quizzes/${quizId}/submit`, {
                 playerSessionId,
+                quizSessionId,
                 answers,
               })
               const resultPayload = (submitResult.result as Record<string, unknown> | undefined) ?? undefined
@@ -180,8 +205,26 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
               }
             } catch (error) {
               if (message) {
-                message.textContent = `Erreur: ${(error as Error).message}`
+                message.textContent = `${(error as Error).message}`
               }
+            }
+
+            const existingReturnButton = document.querySelector<HTMLButtonElement>('#play-quiz-return-home')
+            existingReturnButton?.remove()
+
+            const returnButton = document.createElement('button')
+            returnButton.id = 'play-quiz-return-home'
+            returnButton.className = 'play-quiz-submit'
+            returnButton.type = 'button'
+            returnButton.textContent = "Retourner à l'accueil"
+            returnButton.addEventListener('click', () => {
+              navigate('/')
+            })
+
+            if (message) {
+              message.insertAdjacentElement('afterend', returnButton)
+            } else {
+              container.appendChild(returnButton)
             }
           })
         } catch (error) {

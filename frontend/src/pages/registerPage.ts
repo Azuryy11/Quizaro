@@ -30,6 +30,9 @@ export const renderRegisterPage = ({ apiPost, navigate }: PageContext): PageRend
           </label>
           <button type="submit">Créer mon compte</button>
           <p id="register-msg"></p>
+          <div id="register-login-cta" class="profile-actions is-hidden">
+            <button id="register-login-btn" type="button">Se connecter</button>
+          </div>
         </form>
       </section>
     `,
@@ -37,6 +40,16 @@ export const renderRegisterPage = ({ apiPost, navigate }: PageContext): PageRend
       const registerForm = document.querySelector<HTMLFormElement>('#register-form')
       if (!registerForm) {
         return
+      }
+
+      const message = document.querySelector<HTMLParagraphElement>('#register-msg')
+      const loginCta = document.querySelector<HTMLDivElement>('#register-login-cta')
+      const loginButton = document.querySelector<HTMLButtonElement>('#register-login-btn')
+
+      if (loginButton) {
+        loginButton.addEventListener('click', () => {
+          navigate('/login')
+        })
       }
 
       feather.replace()
@@ -59,7 +72,6 @@ export const renderRegisterPage = ({ apiPost, navigate }: PageContext): PageRend
       registerForm.addEventListener('submit', async (event) => {
         event.preventDefault()
         const formData = new FormData(registerForm)
-        const message = document.querySelector<HTMLParagraphElement>('#register-msg')
         const password = String(formData.get('password') ?? '')
         const verifpassword = String(formData.get('verifpassword') ?? '')
 
@@ -79,11 +91,24 @@ export const renderRegisterPage = ({ apiPost, navigate }: PageContext): PageRend
           if (message) {
             message.textContent = 'Inscription réussie ✅'
           }
+          loginCta?.classList.add('is-hidden')
           navigate('/profile')
         } catch (error) {
-          if (message) {
-            message.textContent = `Erreur: ${(error as Error).message}`
+          const maybeApiError = error as { message?: string; status?: number }
+
+          if (!message) {
+            return
           }
+
+          if (maybeApiError.status === 409) {
+            const baseMessage = (maybeApiError.message ?? 'Cet email est déjà utilisé.')
+            message.textContent = `${baseMessage} Connecte-toi`
+            loginCta?.classList.remove('is-hidden')
+            return
+          }
+
+          message.textContent = `${maybeApiError.message ?? 'inconnue'}`
+          loginCta?.classList.add('is-hidden')
         }
       })
     },
