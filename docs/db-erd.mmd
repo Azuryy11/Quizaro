@@ -1,0 +1,79 @@
+erDiagram
+    USER {
+        int id PK
+        varchar email "UNIQUE"
+        json roles
+        varchar password
+        varchar displayName "nullable"
+    }
+
+    QUIZ {
+        int id PK
+        int created_by_id "nullable FK -> USER.id"
+        varchar title
+        text description "nullable"
+        datetime_immutable createdAt
+    }
+
+    QUESTION {
+        int id PK
+        int quiz_id FK
+        text label
+        varchar type
+        int timeLimit
+        int position
+    }
+
+    ANSWER {
+        int id PK
+        varchar content
+    }
+
+    QUESTION_ANSWER {
+        int question_id PK, FK
+        int answer_id PK, FK
+        bool is_correct
+        int position
+    }
+
+    QUIZ_SESSION {
+        int id PK
+        int quiz_id FK
+        varchar code
+        datetime_immutable startedAt
+        datetime_immutable endedAt "nullable"
+        varchar status
+    }
+
+    PLAYER_SESSION {
+        int id PK
+        int quiz_session_id FK
+        int user_id FK
+        int score
+        varchar nickname
+        datetime_immutable joinedAt
+        datetime_immutable finishedAt "nullable"
+    }
+
+    USER_ANSWER {
+        int id PK
+        int player_session_id FK
+        int question_id FK
+        int answer_id FK
+        datetime_immutable answeredAt
+        int responseTimeMs
+        bool isCorrect
+    }
+
+    USER o|--o{ QUIZ : createdBy
+    QUIZ ||--o{ QUESTION : questions
+    QUESTION ||--o{ QUESTION_ANSWER : options
+    ANSWER ||--o{ QUESTION_ANSWER : options
+
+    QUIZ ||--o{ QUIZ_SESSION : sessions
+    QUIZ_SESSION ||--o{ PLAYER_SESSION : players
+    USER ||--o{ PLAYER_SESSION : user
+
+    PLAYER_SESSION ||--o{ USER_ANSWER : answers
+    QUESTION ||--o{ USER_ANSWER : asked
+    ANSWER ||--o{ USER_ANSWER : chosen

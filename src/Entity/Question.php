@@ -23,15 +23,10 @@ class Question
     private ?Quiz $quiz = null;
 
     /**
-     * @var Collection<int, Answer>
+     * @var Collection<int, QuestionAnswer>
      */
-    #[ORM\ManyToMany(targetEntity: Answer::class, inversedBy: 'questions')]
-    #[ORM\JoinTable(name: 'question_answer')]
-    private Collection $answers;
-
-    #[ORM\ManyToOne]
-    #[ORM\JoinColumn(nullable: false)]
-    private ?Answer $correctAnswer = null;
+    #[ORM\OneToMany(targetEntity: QuestionAnswer::class, mappedBy: 'question', orphanRemoval: true, cascade: ['persist', 'remove'])]
+    private Collection $questionAnswers;
 
     /**
      * @var Collection<int, UserAnswer>
@@ -53,8 +48,8 @@ class Question
 
     public function __construct()
     {
-        $this->answers = new ArrayCollection();
         $this->userAnswers = new ArrayCollection();
+        $this->questionAnswers = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -123,42 +118,57 @@ class Question
     }
 
     /**
+     * @return Collection<int, QuestionAnswer>
+     */
+    public function getQuestionAnswers(): Collection
+    {        
+        return $this->questionAnswers;
+    }
+
+    public function addQuestionAnswer(QuestionAnswer $questionAnswer): static
+    {
+        if (!$this->questionAnswers->contains($questionAnswer)) {
+            $this->questionAnswers->add($questionAnswer);
+            $questionAnswer->setQuestion($this);
+        }
+
+        return $this;
+    }
+
+    public function removeQuestionAnswer(QuestionAnswer $questionAnswer): static
+    {
+        $this->questionAnswers->removeElement($questionAnswer);
+
+        return $this;
+    }
+
+    /**
+     * Helper: returns answers through QuestionAnswer.
+     *
      * @return Collection<int, Answer>
      */
     public function getAnswers(): Collection
     {
-        return $this->answers;
+        $answers = $this->questionAnswers
+            ->map(static fn (QuestionAnswer $questionAnswer): ?Answer => $questionAnswer->getAnswer())
+            ->filter(static fn (?Answer $answer): bool => $answer !== null)
+            ->toArray();
+
+        return new ArrayCollection($answers);
     }
 
-    public function addAnswer(Answer $answer): static
-    {
-        if (!$this->answers->contains($answer)) {
-            $this->answers->add($answer);
-            $answer->addQuestion($this);
-        }
-
-        return $this;
-    }
-
-    public function removeAnswer(Answer $answer): static
-    {
-        if ($this->answers->removeElement($answer)) {
-            $answer->removeQuestion($this);
-        }
-
-        return $this;
-    }
-
+    /**
+     * Helper: returns the first correct answer flagged in QuestionAnswer.
+     */
     public function getCorrectAnswer(): ?Answer
     {
-        return $this->correctAnswer;
-    }
+        foreach ($this->questionAnswers as $questionAnswer) {
+            if ($questionAnswer->isCorrect()) {
+                return $questionAnswer->getAnswer();
+            }
+        }
 
-    public function setCorrectAnswer(?Answer $correctAnswer): static
-    {
-        $this->correctAnswer = $correctAnswer;
-
-        return $this;
+        return null;
     }
 
     /**

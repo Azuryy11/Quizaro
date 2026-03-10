@@ -16,62 +16,54 @@ class Answer
     private ?int $id = null;
 
     /**
-     * @var Collection<int, Question>
-     */
-    #[ORM\ManyToMany(targetEntity: Question::class, mappedBy: 'answers')]
-    private Collection $questions;
-
-    /**
      * @var Collection<int, UserAnswer>
      */
     #[ORM\OneToMany(targetEntity: UserAnswer::class, mappedBy: 'answer')]
     private Collection $userAnswers;
 
+    /**
+     * @var Collection<int, QuestionAnswer>
+     */
+    #[ORM\OneToMany(targetEntity: QuestionAnswer::class, mappedBy: 'answer', orphanRemoval: true, cascade: ['persist', 'remove'])]
+    private Collection $questionAnswers;
+
     #[ORM\Column(length: 20)]
     private string $content = '';
 
-    #[ORM\Column]
-    private bool $isCorrect = false;
-
-    #[ORM\Column]
-    private int $position = 1;
-
     public function __construct()
     {
-        $this->questions = new ArrayCollection();
         $this->userAnswers = new ArrayCollection();
+        $this->questionAnswers = new ArrayCollection();
+    }
+
+    /**
+     * @return Collection<int, QuestionAnswer>
+     */
+    public function getQuestionAnswers(): Collection
+    {
+        return $this->questionAnswers;
+    }
+
+    public function addQuestionAnswer(QuestionAnswer $questionAnswer): static
+    {
+        if (!$this->questionAnswers->contains($questionAnswer)) {
+            $this->questionAnswers->add($questionAnswer);
+            $questionAnswer->setAnswer($this);
+        }
+
+        return $this;
+    }
+
+    public function removeQuestionAnswer(QuestionAnswer $questionAnswer): static
+    {
+        $this->questionAnswers->removeElement($questionAnswer);
+
+        return $this;
     }
 
     public function getId(): ?int
     {
         return $this->id;
-    }
-
-    /**
-     * @return Collection<int, Question>
-     */
-    public function getQuestions(): Collection
-    {
-        return $this->questions;
-    }
-
-    public function addQuestion(Question $question): static
-    {
-        if (!$this->questions->contains($question)) {
-            $this->questions->add($question);
-            $question->addAnswer($this);
-        }
-
-        return $this;
-    }
-
-    public function removeQuestion(Question $question): static
-    {
-        if ($this->questions->removeElement($question)) {
-            $question->removeAnswer($this);
-        }
-
-        return $this;
     }
 
     public function getContent(): string
@@ -82,30 +74,6 @@ class Answer
     public function setContent(string $content): static
     {
         $this->content = $content;
-
-        return $this;
-    }
-
-    public function isCorrect(): bool
-    {
-        return $this->isCorrect;
-    }
-
-    public function setIsCorrect(bool $isCorrect): static
-    {
-        $this->isCorrect = $isCorrect;
-
-        return $this;
-    }
-
-    public function getPosition(): int
-    {
-        return $this->position;
-    }
-
-    public function setPosition(int $position): static
-    {
-        $this->position = $position;
 
         return $this;
     }
