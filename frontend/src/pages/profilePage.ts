@@ -44,7 +44,7 @@ export const renderProfilePage = ({ isAuthenticated, me, escapeHtml, navigate, a
         ${isAdmin
           ? `
             <div class="profile-admin-action">
-              <button id="open-admin-users">Gérer les utilisateurs</button>
+              <button id="open-admin">Administration</button>
             </div>
           `
           : ''}
@@ -161,13 +161,10 @@ export const renderProfilePage = ({ isAuthenticated, me, escapeHtml, navigate, a
       }
 
       if (isAdmin) {
-        const openAdminUsersButton = document.querySelector<HTMLButtonElement>('#open-admin-users')
-        if (openAdminUsersButton) {
-          openAdminUsersButton.addEventListener('click', () => {
-            const adminUrl = `${window.location.origin}${window.location.pathname}#/admin/users`
-            window.open(adminUrl, '_blank', 'noopener')
-          })
-        }
+        const openAdminButton = document.querySelector<HTMLButtonElement>('#open-admin')
+        openAdminButton?.addEventListener('click', () => {
+          navigate('/admin')
+        })
       }
     },
   }

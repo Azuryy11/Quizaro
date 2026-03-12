@@ -3,6 +3,8 @@ import { renderNav } from './components/navbar'
 import { renderHomePage } from './pages/homePage'
 import { renderLoginPage } from './pages/loginPage'
 import { renderAdminUsersPage } from './pages/adminUsersPage'
+import { renderAdminHomePage } from './pages/adminHomePage'
+import { renderAdminQuizzesPage } from './pages/adminQuizzesPage'
 import { renderProfilePage } from './pages/profilePage'
 import { renderRegisterPage } from './pages/registerPage'
 import { renderCreateQuizPage } from './pages/createQuizPage'
@@ -148,6 +150,36 @@ const renderPageByRoute = (route: string, context: PageContext): PageRenderResul
     }
 
     return renderAdminUsersPage(context)
+  }
+
+  if (route === '/admin') {
+    if (!context.isAuthenticated || !isAdmin) {
+      return {
+        content: `
+          <section class="card">
+            <h2>Accès refusé</h2>
+            <p>Cette page est réservée aux administrateurs</p>
+          </section>
+        `,
+      }
+    }
+
+    return renderAdminHomePage(context)
+  }
+
+  if (route === '/admin/quizzes') {
+    if (!context.isAuthenticated || !isAdmin) {
+      return {
+        content: `
+          <section class="card">
+            <h2>Accès refusé</h2>
+            <p>Cette page est réservée aux administrateurs</p>
+          </section>
+        `,
+      }
+    }
+
+    return renderAdminQuizzesPage(context)
   }
 
   return renderHomePage(context)

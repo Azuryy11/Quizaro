@@ -7,14 +7,12 @@ export const renderAdminUsersPage = ({ isAuthenticated, me, escapeHtml, navigate
         <section class="card">
           <h2>Gestion des utilisateurs</h2>
           <p>Tu dois te connecter pour accéder à cette page.</p>
-          <button id="go-login">Aller à la connexion</button>
+          <button id="go-login-admin-users">Aller à la connexion</button>
         </section>
       `,
       mount: () => {
-        const goLoginButton = document.querySelector<HTMLButtonElement>('#go-login')
-        if (goLoginButton) {
-          goLoginButton.addEventListener('click', () => navigate('/login'))
-        }
+        const goLoginButton = document.querySelector<HTMLButtonElement>('#go-login-admin-users')
+        goLoginButton?.addEventListener('click', () => navigate('/login'))
       },
     }
   }
@@ -30,14 +28,12 @@ export const renderAdminUsersPage = ({ isAuthenticated, me, escapeHtml, navigate
         <section class="card">
           <h2>Gestion des utilisateurs</h2>
           <p>Accès refusé : cette page est réservée aux administrateurs.</p>
-          <button id="back-profile">Retour au profil</button>
+          <button id="back-admin-home">Retour à l'administration</button>
         </section>
       `,
       mount: () => {
-        const backProfileButton = document.querySelector<HTMLButtonElement>('#back-profile')
-        if (backProfileButton) {
-          backProfileButton.addEventListener('click', () => navigate('/profile'))
-        }
+        const backButton = document.querySelector<HTMLButtonElement>('#back-admin-home')
+        backButton?.addEventListener('click', () => navigate('/admin'))
       },
     }
   }
@@ -47,12 +43,16 @@ export const renderAdminUsersPage = ({ isAuthenticated, me, escapeHtml, navigate
       <section class="card">
         <h2>Gestion des utilisateurs (admin)</h2>
         <p id="admin-users-msg"></p>
-        <div id="admin-users-list">Chargement des utilisateurs...</div>
+        <div id="admin-users-list">Chargement...</div>
+        <button id="admin-users-back" type="button" class="play-quiz-submit">Retour à l'administration</button>
       </section>
     `,
     mount: () => {
       const listContainer = document.querySelector<HTMLDivElement>('#admin-users-list')
       const message = document.querySelector<HTMLParagraphElement>('#admin-users-msg')
+      const backButton = document.querySelector<HTMLButtonElement>('#admin-users-back')
+
+      backButton?.addEventListener('click', () => navigate('/admin'))
 
       if (!listContainer) {
         return
@@ -87,6 +87,11 @@ export const renderAdminUsersPage = ({ isAuthenticated, me, escapeHtml, navigate
           const response = await apiGet('/api/admin/users')
           const users = Array.isArray(response.users) ? response.users : []
 
+          if (users.length === 0) {
+            listContainer.innerHTML = '<p>Aucun utilisateur.</p>'
+            return
+          }
+
           listContainer.innerHTML = `
             <table class="admin-users-table">
               <thead>
@@ -100,7 +105,7 @@ export const renderAdminUsersPage = ({ isAuthenticated, me, escapeHtml, navigate
                 </tr>
               </thead>
               <tbody>
-                ${users.map((adminUser) => buildRow(adminUser as Record<string, unknown>)).join('')}
+                ${users.map((entry) => buildRow(entry as Record<string, unknown>)).join('')}
               </tbody>
             </table>
           `
@@ -109,10 +114,9 @@ export const renderAdminUsersPage = ({ isAuthenticated, me, escapeHtml, navigate
         }
       }
 
-      listContainer.addEventListener('click', async (event) => {
-        const target = event.target as HTMLElement
-        const button = target.closest<HTMLButtonElement>('.role-btn')
-
+      listContainer.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null
+        const button = target?.closest<HTMLButtonElement>('.role-btn')
         if (!button) {
           return
         }
@@ -123,20 +127,19 @@ export const renderAdminUsersPage = ({ isAuthenticated, me, escapeHtml, navigate
           return
         }
 
-        button.disabled = true
+        void (async () => {
+          button.disabled = true
+          message && (message.textContent = 'Mise à jour en cours...')
 
-        try {
-          await apiPost(`/api/admin/users/${targetUserId}/${action}`, {})
-          if (message) {
-            message.textContent = action === 'promote' ? 'Utilisateur promu admin ✅' : 'Utilisateur rétrogradé ✅'
+          try {
+            await apiPost(`/api/admin/users/${targetUserId}/${action}`, {})
+            message && (message.textContent = action === 'promote' ? 'Utilisateur promu admin ✅' : 'Utilisateur rétrogradé ✅')
+            await loadUsers()
+          } catch (error) {
+            message && (message.textContent = `Erreur: ${(error as Error).message}`)
+            button.disabled = false
           }
-          await loadUsers()
-        } catch (error) {
-          if (message) {
-            message.textContent = `Erreur: ${(error as Error).message}`
-          }
-          button.disabled = false
-        }
+        })()
       })
 
       void loadUsers()
