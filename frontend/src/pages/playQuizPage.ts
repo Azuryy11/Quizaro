@@ -79,10 +79,35 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
 
       const loadQuiz = async (): Promise<void> => {
         const minimumDelay = sleep(1000)
+        const storageKey = `activeQuizSession:${quizId}`
 
         try {
           const warmedResult = consumeWarmedPlayPayload(quizId)
-          const result = warmedResult ?? (await apiGet(`/api/quizzes/${quizId}/play`))
+          const storedSessionRaw = window.sessionStorage.getItem(storageKey)
+          let storedSession: Record<string, unknown> | null = null
+          if (storedSessionRaw) {
+            try {
+              storedSession = JSON.parse(storedSessionRaw) as Record<string, unknown>
+            } catch {
+              window.sessionStorage.removeItem(storageKey)
+            }
+          }
+          const storedCode = String(storedSession?.code ?? '').trim()
+
+          let result: Record<string, unknown>
+
+          if (warmedResult) {
+            result = warmedResult
+          } else if (storedCode !== '') {
+            try {
+              result = await apiPost('/api/quiz-sessions/join', { code: storedCode })
+            } catch {
+              window.sessionStorage.removeItem(storageKey)
+              result = await apiGet(`/api/quizzes/${quizId}/play`)
+            }
+          } else {
+            result = await apiGet(`/api/quizzes/${quizId}/play`)
+          }
 
           await minimumDelay
 
@@ -95,7 +120,6 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           const playerSessionId = Number(session?.playerSessionId ?? 0)
           const sessionCode = String(session?.code ?? '').trim()
           const quizSessionId = Number(session?.quizSessionId ?? 0)
-          const isOwner = Boolean(session?.isOwner)
 
           if (!quiz) {
             container.innerHTML = '<p>Quiz introuvable.</p>'
@@ -107,8 +131,22 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
             return
           }
 
+          if (sessionCode !== '' && Number.isFinite(quizSessionId) && quizSessionId > 0) {
+            window.sessionStorage.setItem(
+              storageKey,
+              JSON.stringify({
+                quizId,
+                quizSessionId,
+                playerSessionId,
+                code: sessionCode,
+              }),
+            )
+          }
+
           const title = escapeHtml(String(quiz.title ?? 'Quiz'))
           const questions = readQuestions(quiz)
+          let currentIndex = 0
+          let selectedAnswers: Map<number, number> = new Map()
 
           if (questions.length === 0) {
             container.innerHTML = '<p>Ce quiz ne contient aucune question.</p>'
@@ -118,115 +156,145 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           container.innerHTML = `
             <h3>${title}</h3>
             ${sessionCode ? '<div class="session-code-banner">Code de session : ' + escapeHtml(sessionCode) + '</div>' : 'Aucun code généré'}
-            ${isOwner && Number.isFinite(quizSessionId) && quizSessionId > 0
-              ? '<button id="finish-quiz-session" class="play-quiz-submit" type="button">Finir la session</button>'
-              : ''}
+             
            <form id="play-quiz-form">
-              ${questions
-                .map(
-                  (question, index) => `
-                    <fieldset class="card play-quiz-question">
-                      <legend>Question ${index + 1}</legend>
-                      <p>${escapeHtml(question.label)}</p>
-                      <div class="answer-options">
-                        ${question.answers
-                          .map(
-                            (answer) => `
-                              <label class="answer-option">
-                                <input type="radio" name="question-${question.id}" value="${answer.id}" required>
-                                <span class="answer-option__text">${escapeHtml(answer.content)}</span>
-                              </label>
-                            `,
-                          )
-                          .join('')}
-                      </div>
-                    </fieldset>
-                  `,
-                )
-                .join('')}
-              <button class="play-quiz-submit" type="submit">Valider mes réponses</button>
+              <p id="play-quiz-progress"></p>
+              <div id="play-quiz-current-question"></div>
+              <button id="play-quiz-next-btn" class="play-quiz-submit" type="button" disabled>Suivant</button>
             </form>
           `
 
           const form = document.querySelector<HTMLFormElement>('#play-quiz-form')
-          if (!form) {
+          const progress = document.querySelector<HTMLParagraphElement>('#play-quiz-progress')
+          const currentQuestionContainer = document.querySelector<HTMLDivElement>('#play-quiz-current-question')
+          const nextButton = document.querySelector<HTMLButtonElement>('#play-quiz-next-btn')
+
+          if (!form || !progress || !currentQuestionContainer || !nextButton) {
             return
           }
 
-          const finishButton = document.querySelector<HTMLButtonElement>('#finish-quiz-session')
-          if (finishButton) {
-            finishButton.addEventListener('click', async () => {
-              try {
-                const finishResult = await apiPost(`/api/quiz-sessions/${quizSessionId}/finish`, {})
-                const finishSession = (finishResult.session as Record<string, unknown> | undefined) ?? undefined
-                const status = String(finishSession?.status ?? 'FINISHED')
-                if (message) {
-                  message.textContent = `Session terminée (${status}).`
-                  navigate('/')
-                }
-              } catch (error) {
-                if (message) {
-                  message.textContent = (error as Error).message
-                }
-              }
-            })
-          }
-
-          form.addEventListener('submit', async (event) => {
-            event.preventDefault()
-
-            const formData = new FormData(form)
+          const submitQuiz = async (): Promise<void> => {
             const answers = questions.map((question) => ({
               questionId: question.id,
-              answerId: Number(formData.get(`question-${question.id}`)),
+              answerId: Number(selectedAnswers.get(question.id) ?? 0),
               responseTimeMs: 0,
             }))
 
-            if (answers.some((answer) => !Number.isFinite(answer.answerId) || answer.answerId <= 0)) {
-              if (message) {
-                message.textContent = 'Réponds à toutes les questions avant de valider.'
-              }
-              return
+          if (answers.some((answer) => !Number.isFinite(answer.answerId) || answer.answerId <= 0)) {
+            if (message) {
+              message.textContent = 'Réponds à toutes les questions avant de valider.'
             }
+            return
+          }
 
-            try {
-              const submitResult = await apiPost(`/api/quizzes/${quizId}/submit`, {
-                playerSessionId,
-                quizSessionId,
-                answers,
-              })
-              const resultPayload = (submitResult.result as Record<string, unknown> | undefined) ?? undefined
-              const score = Number(resultPayload?.score ?? 0)
-              const total = Number(resultPayload?.totalQuestions ?? questions.length)
-              const percentage = total > 0 ? (score / total) * 100 : 0
-
-              if (message) {
-                message.textContent = `Résultat: ${score}/${total}${percentage >= 50 ? ' ✅' : '❌'}`
-              }
-            } catch (error) {
-              if (message) {
-                message.textContent = `${(error as Error).message}`
-              }
-            }
-
-            const existingReturnButton = document.querySelector<HTMLButtonElement>('#play-quiz-return-home')
-            existingReturnButton?.remove()
-
-            const returnButton = document.createElement('button')
-            returnButton.id = 'play-quiz-return-home'
-            returnButton.className = 'play-quiz-submit'
-            returnButton.type = 'button'
-            returnButton.textContent = "Retourner à l'accueil"
-            returnButton.addEventListener('click', () => {
-              navigate('/')
+          try {
+            await apiPost(`/api/quizzes/${quizId}/submit`, {
+              playerSessionId,
+              quizSessionId,
+              answers,
             })
 
+            navigate('/results/' + quizSessionId)
+            return
+          } catch (error) {
             if (message) {
-              message.insertAdjacentElement('afterend', returnButton)
-            } else {
-              container.appendChild(returnButton)
+              message.textContent = `${(error as Error).message}`
             }
+          }
+
+          const existingReturnButton = document.querySelector<HTMLButtonElement>('#play-quiz-return-home')
+          existingReturnButton?.remove()
+
+          const returnButton = document.createElement('button')
+          returnButton.id = 'play-quiz-return-home'
+          returnButton.className = 'play-quiz-submit'
+          returnButton.type = 'button'
+          returnButton.textContent = "Retourner à l'accueil"
+          returnButton.addEventListener('click', () => {
+            navigate('/')
           })
+
+          if (message) {
+            message.insertAdjacentElement('afterend', returnButton)
+          } else {
+            container.appendChild(returnButton)
+          }
+        }
+
+        const renderCurrentQuestion = (): void => {
+          const question = questions[currentIndex]
+          if (!question) {
+            return
+          }
+
+          progress.textContent = `Question ${currentIndex + 1}/${questions.length}`
+
+          currentQuestionContainer.innerHTML = `
+            <fieldset class="card play-quiz-question">
+              <legend>Question ${currentIndex + 1}</legend>
+              <p>${escapeHtml(question.label)}</p>
+              <div class="answer-options">
+                ${question.answers
+                  .map(
+                    (answer) => `
+                      <label class="answer-option">
+                        <input type="radio" name="current-question-${question.id}" value="${answer.id}">
+                        <span class="answer-option__text">${escapeHtml(answer.content)}</span>
+                      </label>
+                    `,
+                  )
+                  .join('')}
+              </div>
+            </fieldset>
+          `
+
+          const savedAnswerId = selectedAnswers.get(question.id)
+          if (Number.isFinite(savedAnswerId)) {
+            const savedInput = currentQuestionContainer.querySelector<HTMLInputElement>(`input[value="${savedAnswerId}"]`)
+            if (savedInput) {
+              savedInput.checked = true
+            }
+          }
+
+          const radioInputs = currentQuestionContainer.querySelectorAll<HTMLInputElement>('input[type="radio"]')
+          radioInputs.forEach((input) => {
+            input.addEventListener('change', () => {
+              selectedAnswers.set(question.id, Number(input.value))
+              nextButton.disabled = false
+              if (message) {
+                message.textContent = ''
+              }
+            })
+          })
+
+          nextButton.textContent = currentIndex === questions.length - 1 ? 'Terminer' : 'Suivant'
+          nextButton.disabled = !selectedAnswers.has(question.id)
+        }
+
+        nextButton.addEventListener('click', async () => {
+          const currentQuestion = questions[currentIndex]
+          if (!currentQuestion) {
+            return
+          }
+
+          const selected = selectedAnswers.get(currentQuestion.id)
+          if (selected === undefined || selected <= 0) {
+            if (message) {
+              message.textContent = 'Choisis une réponse pour continuer.'
+            }
+            return
+          }
+
+          if (currentIndex < questions.length - 1) {
+            currentIndex += 1
+            renderCurrentQuestion()
+            return
+          }
+
+          await submitQuiz()
+        })
+
+      renderCurrentQuestion()
         } catch (error) {
           await minimumDelay
 

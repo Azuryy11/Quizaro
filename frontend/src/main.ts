@@ -11,6 +11,7 @@ import { renderCreateQuizPage } from './pages/createQuizPage'
 import { renderPlayQuizPage } from './pages/playQuizPage'
 import { renderMyQuizzesPage } from './pages/myQuizzesPage'
 import { renderEditQuizPage } from './pages/editQuizPage'
+import { renderResultsPage } from './pages/resultsPage'
 import type { PageContext, PageRenderResult } from './pages/types'
 
 const app = document.querySelector<HTMLDivElement>('#app')
@@ -123,6 +124,12 @@ const renderPageByRoute = (route: string, context: PageContext): PageRenderResul
 
   if (route === '/my-quizzes') {
     return renderMyQuizzesPage(context)
+  }
+
+  const resultsRouteMatch = route.match(/^\/results\/(\d+)$/)
+  if (resultsRouteMatch) {
+    const quizSessionId = Number(resultsRouteMatch[1])
+    return renderResultsPage(context, quizSessionId)
   }
 
   const editRouteMatch = route.match(/^\/edit-quiz\/(\d+)$/)
@@ -276,3 +283,4 @@ if (app) {
 
   void render()
 }
+

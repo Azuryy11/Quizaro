@@ -257,6 +257,99 @@ final class ApiQuizController extends AbstractController
         ]);
     }
 
+    #[Route('/api/quiz-sessions/{id}/results', name: 'api_quiz_sessions_results', methods: ['GET'])]
+    public function getResults(int $id, EntityManagerInterface $entityManager): JsonResponse
+    {
+        /** @var User|null $user */
+        $user = $this->getUser();
+
+        if (null === $user) {
+            return $this->json([
+                'message' => 'Connecte-toi pour voir les résultats d\'une session.',
+            ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $quizSession = $entityManager->getRepository(QuizSession::class)->find($id);
+        if (!$quizSession instanceof QuizSession) {
+            return $this->json([
+                'message' => 'Session introuvable.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+        $isAdmin = in_array(User::ROLE_ADMIN, $user->getRoles(), true);
+        $viewerPlayerSession = $entityManager->getRepository(PlayerSession::class)->findOneBy([
+            'quizSession' => $quizSession,
+            'user' => $user,
+        ]);
+
+        if (!$isAdmin && !($viewerPlayerSession instanceof PlayerSession)) {
+            return $this->json([
+                'message' => 'Accès refusé aux résultats de cette session.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        $quiz = $quizSession->getQuiz();
+        if (!$quiz instanceof Quiz) {
+            return $this->json([
+                'message' => 'Quiz introuvable pour cette session.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $totalQuestions = count($quiz->getQuestions());
+
+        // if (QuizSession::STATUS_FINISHED !== $quizSession->getStatus()) {
+        //     return $this->json([
+        //         'message' => 'Les résultats sont disponibles une fois la session terminée.',
+        //     ], Response::HTTP_BAD_REQUEST);
+        // }
+
+        $results = [];
+        foreach ($quizSession->getPlayerSessions() as $playerSession) {
+            if (!$playerSession instanceof PlayerSession) {
+                continue;
+            }
+
+            $finishedAt = $playerSession->getFinishedAt();
+
+            $results[] = [
+                'playerSessionId' => $playerSession->getId(),
+                'nickname' => $playerSession->getNickname(),
+                'score' => $playerSession->getScore(),
+                'submitted' => count($playerSession->getUserAnswers()),
+                'finishedAt' => $finishedAt?->format(DATE_ATOM),
+                'isMe' => $playerSession->getUser()?->getId() === $user->getId(),
+                '_finishedAtTs' => $finishedAt?->getTimestamp() ?? PHP_INT_MAX,
+            ];
+        }
+
+        usort(
+            $results,
+            static fn (array $a, array $b): int => ($b['score'] <=> $a['score']) ?: ($a['_finishedAtTs'] <=> $b['_finishedAtTs']),
+        );
+
+        foreach ($results as $index => &$result) {
+            $result['rank'] = $index + 1;
+            unset($result['_finishedAtTs']);
+        }
+        unset($result);
+
+        return $this->json([
+            'session' => [
+                'quizSessionId' => $quizSession->getId(),
+                'code' => $quizSession->getCode(),
+                'status' => $quizSession->getStatus(),
+                'isOwner' => $quizSession->getOwner()?->getId() === $user->getId(),
+                'startedAt' => $quizSession->getStartedAt()->format(DATE_ATOM),
+                'endedAt' => $quizSession->getEndedAt()?->format(DATE_ATOM),
+            ],
+            'quiz' => [
+                'id' => $quiz->getId(),
+                'title' => $quiz->getTitle(),
+                'totalQuestions' => $totalQuestions,
+            ],
+            'results' => $results,
+        ]);
+    }
+
     #[Route('/api/quizzes/{id}/submit', name: 'api_quizzes_submit', methods: ['POST'])]
     public function submit(int $id, Request $request, EntityManagerInterface $entityManager): JsonResponse
     {

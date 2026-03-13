@@ -102,6 +102,12 @@ label {
   font-size: 0.95rem;
 }
 
+hr {
+  border: none;
+  border-top: 2px solid var(--surface-border);
+  margin: 2rem 0rem 1rem 0rem;
+}
+
 input {
   border-radius: 10px;
   border: 1px solid var(--field-border);
@@ -239,6 +245,28 @@ li {
 }
 
 .admin-users-table th {
+  font-size: 0.9rem;
+}
+
+.results-table {
+  width: min(100%, 760px);
+  margin: 0.5rem auto 0;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.results-table th,
+.results-table td {
+  text-align: center;
+  padding: 0.4rem 0rem;
+}
+
+.results-table th:not(:last-child),
+.results-table td:not(:last-child) {
+  border-right: 3px solid #ffffff;
+}
+
+.results-table thead th {
   font-size: 0.9rem;
 }
 
