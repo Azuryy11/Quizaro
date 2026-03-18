@@ -466,12 +466,27 @@ final class ApiQuizController extends AbstractController
             }
 
             $questionId = $answerPayload['questionId'] ?? null;
-            $answerId = $answerPayload['answerId'] ?? null;
+            $answerIds = $answerPayload['answerIds'] ?? null;
             $responseTimeMs = $answerPayload['responseTimeMs'] ?? 0;
 
-            if (!is_int($questionId) || !is_int($answerId)) {
+            if (!is_int($questionId) || !is_array($answerIds) || [] === $answerIds || !array_is_list($answerIds)) {
                 return $this->json([
-                    'message' => sprintf('questionId et answerId sont requis pour la réponse #%d.', $index + 1),
+                    'message' => sprintf('questionId et answerIds (tableau non vide) sont requis pour la réponse #%d.', $index + 1),
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            foreach ($answerIds as $answerId) {
+                if (!is_int($answerId) || $answerId <= 0) {
+                    return $this->json([
+                        'message' => sprintf('answerIds doit être un tableau d\'entiers positifs pour la réponse #%d.', $index + 1),
+                    ], Response::HTTP_BAD_REQUEST);
+                }
+            }
+
+            $selectedAnswerIds = array_values(array_unique($answerIds));
+            if (count($selectedAnswerIds) !== count($answerIds)) {
+                return $this->json([
+                    'message' => sprintf('answerIds ne doit pas contenir de doublons pour la réponse #%d.', $index + 1),
                 ], Response::HTTP_BAD_REQUEST);
             }
 
@@ -488,30 +503,52 @@ final class ApiQuizController extends AbstractController
                 ], Response::HTTP_BAD_REQUEST);
             }
 
-            $selectedAnswer = null;
-            foreach ($question->getAnswers() as $answer) {
-                if ($answer instanceof Answer && $answer->getId() === $answerId) {
-                    $selectedAnswer = $answer;
-                    break;
+            $answerMap = [];
+            $correctAnswerIds = [];
+
+            foreach ($question->getQuestionAnswers() as $questionAnswer) {
+                if (!$questionAnswer instanceof QuestionAnswer) {
+                    continue;
+                }
+
+                $answer = $questionAnswer->getAnswer();
+                if (!$answer instanceof Answer) {
+                    continue;
+                }
+
+                $answerId = $answer->getId();
+                if (!is_int($answerId) || $answerId <= 0) {
+                    continue;
+                }
+
+                $answerMap[$answerId] = $answer;
+                if ($questionAnswer->isCorrect()) {
+                    $correctAnswerIds[] = $answerId;
                 }
             }
 
-            if (!$selectedAnswer instanceof Answer) {
-                return $this->json([
-                    'message' => sprintf('La réponse choisie pour la question #%d est invalide.', $questionId),
-                ], Response::HTTP_BAD_REQUEST);
+            foreach ($selectedAnswerIds as $selectedAnswerId) {
+                if (!isset($answerMap[$selectedAnswerId])) {
+                    return $this->json([
+                        'message' => sprintf('La réponse choisie pour la question #%d est invalide.', $questionId),
+                    ], Response::HTTP_BAD_REQUEST);
+                }
             }
 
-            $isCorrect = $question->getCorrectAnswer()?->getId() === $selectedAnswer->getId();
+            sort($selectedAnswerIds);
+            sort($correctAnswerIds);
+            $isCorrect = $selectedAnswerIds === $correctAnswerIds;
 
-            $userAnswer = new UserAnswer();
-            $userAnswer->setPlayerSession($playerSession);
-            $userAnswer->setQuestion($question);
-            $userAnswer->setAnswer($selectedAnswer);
-            $userAnswer->setResponseTimeMs($responseTimeMs);
-            $userAnswer->setIsCorrect($isCorrect);
+            foreach ($selectedAnswerIds as $selectedAnswerId) {
+                $userAnswer = new UserAnswer();
+                $userAnswer->setPlayerSession($playerSession);
+                $userAnswer->setQuestion($question);
+                $userAnswer->setAnswer($answerMap[$selectedAnswerId]);
+                $userAnswer->setResponseTimeMs($responseTimeMs);
+                $userAnswer->setIsCorrect($isCorrect);
 
-            $entityManager->persist($userAnswer);
+                $entityManager->persist($userAnswer);
+            }
 
             ++$submitted;
             if ($isCorrect) {
@@ -520,7 +557,7 @@ final class ApiQuizController extends AbstractController
 
             $details[] = [
                 'questionId' => $question->getId(),
-                'answerId' => $selectedAnswer->getId(),
+                'answerIds' => $selectedAnswerIds,
                 'isCorrect' => $isCorrect,
             ];
         }
@@ -690,7 +727,7 @@ final class ApiQuizController extends AbstractController
     /**
      * @param array<string, mixed> $payload
      *
-     * @return array{title: string, description: ?string, questions: array<int, array{label: string, correctAnswer: bool}>}|JsonResponse
+     * @return array{title: string, description: ?string, questions: array<int, array{label: string, type: string, answers: array<int, string>, correctIndexes: array<int, int>}>}|JsonResponse
      */
     private function validateQuizPayload(array $payload): array|JsonResponse
     {
@@ -746,7 +783,6 @@ final class ApiQuizController extends AbstractController
             }
 
             $labelRaw = $questionPayload['label'] ?? $questionPayload['content'] ?? null;
-            $correctAnswer = $questionPayload['correctAnswer'] ?? null;
 
             if (!is_string($labelRaw)) {
                 return $this->json([
@@ -768,15 +804,115 @@ final class ApiQuizController extends AbstractController
                 ], Response::HTTP_BAD_REQUEST);
             }
 
-            if (!is_bool($correctAnswer)) {
+            $typeRaw = $questionPayload['type'] ?? Question::TYPE_TRUE_FALSE;
+            if (!is_string($typeRaw)) {
                 return $this->json([
-                    'message' => sprintf('correctAnswer doit être un booléen pour la question #%d.', $index + 1),
+                    'message' => sprintf('Le type de la question #%d est invalide.', $index + 1),
                 ], Response::HTTP_BAD_REQUEST);
             }
 
+            $type = strtoupper(trim($typeRaw));
+            if (!in_array($type, [Question::TYPE_TRUE_FALSE, Question::TYPE_QCM], true)) {
+                return $this->json([
+                    'message' => sprintf('Le type de la question #%d doit être TRUE_FALSE ou QCM.', $index + 1),
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            if (Question::TYPE_TRUE_FALSE === $type) {
+                $correctAnswer = $questionPayload['correctAnswer'] ?? null;
+
+                if (!is_bool($correctAnswer)) {
+                    return $this->json([
+                        'message' => sprintf('correctAnswer doit être un booléen pour la question #%d.', $index + 1),
+                    ], Response::HTTP_BAD_REQUEST);
+                }
+
+                $normalizedQuestions[] = [
+                    'label' => $label,
+                    'type' => Question::TYPE_TRUE_FALSE,
+                    'answers' => ['VRAI', 'FAUX'],
+                    'correctIndexes' => [$correctAnswer ? 0 : 1],
+                ];
+
+                continue;
+            }
+
+            $answersRaw = $questionPayload['answers'] ?? null;
+            $correctIndexesRaw = $questionPayload['correctAnswers'] ?? null;
+
+            if (!is_array($answersRaw) || [] === $answersRaw || !array_is_list($answersRaw)) {
+                return $this->json([
+                    'message' => sprintf('answers doit être un tableau non vide pour la question QCM #%d.', $index + 1),
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            $answers = [];
+            foreach ($answersRaw as $answerIndex => $answerValue) {
+                if (!is_string($answerValue)) {
+                    return $this->json([
+                        'message' => sprintf('La réponse #%d de la question #%d est invalide.', $answerIndex + 1, $index + 1),
+                    ], Response::HTTP_BAD_REQUEST);
+                }
+
+                $answerContent = trim($answerValue);
+                if ('' === $answerContent) {
+                    return $this->json([
+                        'message' => sprintf('La réponse #%d de la question #%d est vide.', $answerIndex + 1, $index + 1),
+                    ], Response::HTTP_BAD_REQUEST);
+                }
+
+                if (mb_strlen($answerContent) > 255) {
+                    return $this->json([
+                        'message' => sprintf('La réponse #%d de la question #%d dépasse 255 caractères.', $answerIndex + 1, $index + 1),
+                    ], Response::HTTP_BAD_REQUEST);
+                }
+
+                $answers[] = $answerContent;
+            }
+
+            if (count($answers) < 2) {
+                return $this->json([
+                    'message' => sprintf('La question QCM #%d doit avoir au moins 2 réponses.', $index + 1),
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            if (count(array_unique($answers)) !== count($answers)) {
+                return $this->json([
+                    'message' => sprintf('La question QCM #%d contient des réponses en doublon.', $index + 1),
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            if (!is_array($correctIndexesRaw) || [] === $correctIndexesRaw || !array_is_list($correctIndexesRaw)) {
+                return $this->json([
+                    'message' => sprintf('correctAnswers doit être un tableau non vide pour la question QCM #%d.', $index + 1),
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
+            $correctIndexes = [];
+            foreach ($correctIndexesRaw as $correctIndex) {
+                if (!is_int($correctIndex)) {
+                    return $this->json([
+                        'message' => sprintf('Les index de correctAnswers doivent être des entiers pour la question #%d.', $index + 1),
+                    ], Response::HTTP_BAD_REQUEST);
+                }
+
+                if ($correctIndex < 0 || $correctIndex >= count($answers)) {
+                    return $this->json([
+                        'message' => sprintf('Un index de correctAnswers est hors limites pour la question #%d.', $index + 1),
+                    ], Response::HTTP_BAD_REQUEST);
+                }
+
+                $correctIndexes[] = $correctIndex;
+            }
+
+            $correctIndexes = array_values(array_unique($correctIndexes));
+            sort($correctIndexes);
+
             $normalizedQuestions[] = [
                 'label' => $label,
-                'correctAnswer' => $correctAnswer,
+                'type' => Question::TYPE_QCM,
+                'answers' => $answers,
+                'correctIndexes' => $correctIndexes,
             ];
         }
 
@@ -793,7 +929,7 @@ final class ApiQuizController extends AbstractController
     }
 
     /**
-     * @param array<int, array{label: string, correctAnswer: bool}> $questions
+     * @param array<int, array{label: string, type: string, answers: array<int, string>, correctIndexes: array<int, int>}> $questions
      */
     private function hydrateQuestions(Quiz $quiz, array $questions, EntityManagerInterface $entityManager): void
     {
@@ -804,25 +940,43 @@ final class ApiQuizController extends AbstractController
             $question = new Question();
             $question->setQuiz($quiz);
             $question->setLabel($questionPayload['label']);
-            $question->setType(Question::TYPE_TRUE_FALSE);
+            $question->setType($questionPayload['type']);
             $question->setTimeLimit(30);
             $question->setPosition($index + 1);
 
-            $correctIsTrue = true === $questionPayload['correctAnswer'];
+            if (Question::TYPE_TRUE_FALSE === $questionPayload['type']) {
+                $isTrueCorrect = in_array(0, $questionPayload['correctIndexes'], true);
 
-            $question->addQuestionAnswer(
-                (new QuestionAnswer())
-                    ->setAnswer($answerTrue)
-                    ->setPosition(1)
-                    ->setIsCorrect($correctIsTrue),
-            );
+                $question->addQuestionAnswer(
+                    (new QuestionAnswer())
+                        ->setAnswer($answerTrue)
+                        ->setPosition(1)
+                        ->setIsCorrect($isTrueCorrect),
+                );
 
-            $question->addQuestionAnswer(
-                (new QuestionAnswer())
-                    ->setAnswer($answerFalse)
-                    ->setPosition(2)
-                    ->setIsCorrect(!$correctIsTrue),
-            );
+                $question->addQuestionAnswer(
+                    (new QuestionAnswer())
+                        ->setAnswer($answerFalse)
+                        ->setPosition(2)
+                        ->setIsCorrect(!$isTrueCorrect),
+                );
+
+                $entityManager->persist($question);
+                continue;
+            }
+
+            foreach ($questionPayload['answers'] as $answerIndex => $answerContent) {
+                $answer = new Answer();
+                $answer->setContent($answerContent);
+                $entityManager->persist($answer);
+
+                $question->addQuestionAnswer(
+                    (new QuestionAnswer())
+                        ->setAnswer($answer)
+                        ->setPosition($answerIndex + 1)
+                        ->setIsCorrect(in_array($answerIndex, $questionPayload['correctIndexes'], true)),
+                );
+            }
 
             $entityManager->persist($question);
         }

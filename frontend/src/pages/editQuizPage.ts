@@ -2,7 +2,10 @@ import type { PageContext, PageRenderResult } from './types'
 
 type EditableQuestion = {
   label: string
-  correctAnswer: boolean
+  type: 'TRUE_FALSE' | 'QCM'
+  correctAnswer?: boolean
+  answers?: string[]
+  correctAnswers?: number[]
 }
 
 const normalizeCorrectAnswer = (rawQuestion: Record<string, unknown>): boolean => {
@@ -22,16 +25,49 @@ const normalizeCorrectAnswer = (rawQuestion: Record<string, unknown>): boolean =
   return Boolean(correctAnswer)
 }
 
+const normalizeQcmQuestion = (rawQuestion: Record<string, unknown>): EditableQuestion => {
+  const answers = Array.isArray(rawQuestion.answers) ? (rawQuestion.answers as unknown[]) : []
+  const normalizedAnswers = answers
+    .map((answer) => (answer && typeof answer === 'object' ? (answer as Record<string, unknown>) : null))
+    .filter((answer): answer is Record<string, unknown> => Boolean(answer))
+    .sort((left, right) => Number(left.position ?? 0) - Number(right.position ?? 0))
+    .map((answer) => String(answer.content ?? '').trim())
+    .filter((content) => content !== '')
+
+  const correctAnswers = answers
+    .map((answer, index) => {
+      const normalized = answer && typeof answer === 'object' ? (answer as Record<string, unknown>) : null
+      return normalized?.isCorrect ? index : -1
+    })
+    .filter((index) => index >= 0)
+
+  return {
+    label: String(rawQuestion.label ?? '').trim(),
+    type: 'QCM',
+    answers: normalizedAnswers,
+    correctAnswers,
+  }
+}
+
 const extractEditableQuestions = (quiz: Record<string, unknown>): EditableQuestion[] => {
   const questions = Array.isArray(quiz.questions) ? (quiz.questions as unknown[]) : []
 
   return questions
     .map((question) => (question && typeof question === 'object' ? (question as Record<string, unknown>) : null))
     .filter((question): question is Record<string, unknown> => Boolean(question))
-    .map((question) => ({
-      label: String(question.label ?? '').trim(),
-      correctAnswer: normalizeCorrectAnswer(question),
-    }))
+    .map((question) => {
+      const rawType = String(question.type ?? 'TRUE_FALSE').toUpperCase()
+
+      if (rawType === 'QCM') {
+        return normalizeQcmQuestion(question)
+      }
+
+      return {
+        label: String(question.label ?? '').trim(),
+        type: 'TRUE_FALSE' as const,
+        correctAnswer: normalizeCorrectAnswer(question),
+      }
+    })
     .filter((question) => question.label !== '')
 }
 
@@ -44,12 +80,38 @@ const renderQuestionBlock = (index: number): string => {
       <label>Énoncé de la question :</label>
       <input name="question-label" type="text" maxlength="180" required>
 
-      <div class="textarea-container">
+      <label>Type de question</label>
+      <select name="question-type" data-question-type required>
+        <option value="TRUE_FALSE">Vrai/Faux</option>
+        <option value="QCM">QCM</option>
+      </select>
+
+      <div data-true-false-fields>
         <label>Bonne réponse</label>
         <select name="question-correct" required>
           <option value="true">Vrai</option>
           <option value="false">Faux</option>
         </select>
+      </div>
+
+      <div data-qcm-fields class="is-hidden">
+        <p>Réponses QCM (2 minimum)</p>
+        <div class="qcm-option-row">
+          <input name="question-qcm-answer" type="text" maxlength="255" placeholder="Réponse 1">
+          <label><input name="question-qcm-correct" type="checkbox" value="0"> Correcte</label>
+        </div>
+        <div class="qcm-option-row">
+          <input name="question-qcm-answer" type="text" maxlength="255" placeholder="Réponse 2">
+          <label><input name="question-qcm-correct" type="checkbox" value="1"> Correcte</label>
+        </div>
+        <div class="qcm-option-row">
+          <input name="question-qcm-answer" type="text" maxlength="255" placeholder="Réponse 3">
+          <label><input name="question-qcm-correct" type="checkbox" value="2"> Correcte</label>
+        </div>
+        <div class="qcm-option-row">
+          <input name="question-qcm-answer" type="text" maxlength="255" placeholder="Réponse 4">
+          <label><input name="question-qcm-correct" type="checkbox" value="3"> Correcte</label>
+        </div>
       </div>
 
       <button type="button" data-remove-question>Supprimer la question</button>
@@ -138,6 +200,25 @@ export const renderEditQuizPage = (
         })
       }
 
+      const bindQuestionTypeToggle = (questionCard: HTMLDivElement): void => {
+        const typeSelect = questionCard.querySelector<HTMLSelectElement>('[data-question-type]')
+        const trueFalseFields = questionCard.querySelector<HTMLDivElement>('[data-true-false-fields]')
+        const qcmFields = questionCard.querySelector<HTMLDivElement>('[data-qcm-fields]')
+
+        if (!typeSelect || !trueFalseFields || !qcmFields) {
+          return
+        }
+
+        const syncVisibility = (): void => {
+          const isQcm = typeSelect.value === 'QCM'
+          trueFalseFields.classList.toggle('is-hidden', isQcm)
+          qcmFields.classList.toggle('is-hidden', !isQcm)
+        }
+
+        typeSelect.addEventListener('change', syncVisibility)
+        syncVisibility()
+      }
+
       const addQuestion = (question?: EditableQuestion): void => {
         const index = questionsContainer.querySelectorAll('[data-question-item]').length
         questionsContainer.insertAdjacentHTML('beforeend', renderQuestionBlock(index))
@@ -145,15 +226,45 @@ export const renderEditQuizPage = (
         const inserted = questionsContainer.querySelectorAll<HTMLDivElement>('[data-question-item]')[index]
         if (inserted) {
           const labelInput = inserted.querySelector<HTMLInputElement>('input[name="question-label"]')
+          const typeSelect = inserted.querySelector<HTMLSelectElement>('select[name="question-type"]')
           const correctSelect = inserted.querySelector<HTMLSelectElement>('select[name="question-correct"]')
+          const qcmAnswerInputs = Array.from(
+            inserted.querySelectorAll<HTMLInputElement>('input[name="question-qcm-answer"]'),
+          )
+          const qcmCorrectInputs = Array.from(
+            inserted.querySelectorAll<HTMLInputElement>('input[name="question-qcm-correct"]'),
+          )
+
+          bindQuestionTypeToggle(inserted)
 
           if (labelInput && question) {
             labelInput.value = question.label
           }
 
-          if (correctSelect && question) {
+          if (typeSelect && question) {
+            typeSelect.value = question.type
+            typeSelect.dispatchEvent(new Event('change'))
+          }
+
+          if (correctSelect && question && question.type === 'TRUE_FALSE') {
             correctSelect.value = question.correctAnswer ? 'true' : 'false'
           }
+
+          if (question && question.type === 'QCM') {
+            const answers = question.answers ?? []
+            const correctAnswers = question.correctAnswers ?? []
+
+            qcmAnswerInputs.forEach((input, answerIndex) => {
+              input.value = answers[answerIndex] ?? ''
+            })
+
+            qcmCorrectInputs.forEach((input) => {
+              const answerIndex = Number(input.value)
+              input.checked = correctAnswers.includes(answerIndex)
+            })
+          }
+        } else if (inserted) {
+          bindQuestionTypeToggle(inserted)
         }
 
         refreshQuestionTitles()
@@ -225,15 +336,54 @@ export const renderEditQuizPage = (
         const title = String(formData.get('title') ?? '').trim()
         const description = String(formData.get('description') ?? '').trim()
 
-        const labelValues = formData.getAll('question-label').map((value) => String(value).trim())
-        const correctAnswerValues = formData.getAll('question-correct').map((value) => String(value))
+        const questionCards = Array.from(
+          questionsContainer.querySelectorAll<HTMLDivElement>('[data-question-item]'),
+        )
 
-        const questions = labelValues
-          .map((label, index) => ({
-            label,
-            correctAnswer: correctAnswerValues[index] === 'true',
-          }))
-          .filter((question) => question.label !== '')
+        const questions = questionCards
+          .map((questionCard) => {
+            const labelInput = questionCard.querySelector<HTMLInputElement>('input[name="question-label"]')
+            const typeSelect = questionCard.querySelector<HTMLSelectElement>('select[name="question-type"]')
+            const correctSelect = questionCard.querySelector<HTMLSelectElement>('select[name="question-correct"]')
+            const qcmAnswerInputs = Array.from(
+              questionCard.querySelectorAll<HTMLInputElement>('input[name="question-qcm-answer"]'),
+            )
+            const qcmCorrectInputs = Array.from(
+              questionCard.querySelectorAll<HTMLInputElement>('input[name="question-qcm-correct"]'),
+            )
+
+            const label = String(labelInput?.value ?? '').trim()
+            const type = String(typeSelect?.value ?? 'TRUE_FALSE')
+
+            if (label === '') {
+              return null
+            }
+
+            if (type === 'QCM') {
+              const answers = qcmAnswerInputs
+                .map((input) => input.value.trim())
+                .filter((answer) => answer !== '')
+
+              const correctAnswers = qcmCorrectInputs
+                .filter((input) => input.checked)
+                .map((input) => Number(input.value))
+                .filter((value) => Number.isInteger(value) && value >= 0)
+
+              return {
+                label,
+                type: 'QCM',
+                answers,
+                correctAnswers,
+              }
+            }
+
+            return {
+              label,
+              type: 'TRUE_FALSE',
+              correctAnswer: String(correctSelect?.value ?? 'true') === 'true',
+            }
+          })
+          .filter((question): question is Record<string, unknown> => question !== null)
 
         if ('' === title || questions.length === 0) {
           if (message) {

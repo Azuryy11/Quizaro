@@ -51,7 +51,7 @@ export const renderResultsPage = ({ isAuthenticated, navigate, apiGet, apiPost, 
         return
       }
 
-      const HOME_REDIRECT_SECONDS = 10
+      const HOME_REDIRECT_SECONDS = 5
       let countdownIntervalId: number | null = null
       let redirectTimeoutId: number | null = null
       let redirectScheduled = false

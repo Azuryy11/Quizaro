@@ -27,3 +27,9 @@
 # Local API scratch files
 /tmp*.json
 /tmpcookies.txt
+/security-audit.local.md
+
+
+# Quizaro Project
+/Projet_Quizz.pdf
+/Quizaro_Planning.pdf

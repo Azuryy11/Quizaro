@@ -1,9 +1,12 @@
 import type { PageContext, PageRenderResult } from './types'
 import { consumeWarmedPlayPayload } from '../sessionWarmupCache'
+import { renderTrueFalseTemplate } from './questionTemplates/typeTrueFalse'
+import { renderQcmTemplate } from './questionTemplates/typeQcm'
 
 type PlayQuizQuestion = {
   id: number
   label: string
+  type: string
   answers: Array<{ id: number; content: string }>
 }
 
@@ -32,7 +35,8 @@ const readQuestions = (quiz: Record<string, unknown>): PlayQuizQuestion[] => {
         return null
       }
 
-      return { id, label, answers }
+      const type = String(question.type ?? 'TRUE_FALSE')
+      return { id, label, type, answers }
     })
     .filter((question): question is PlayQuizQuestion => question !== null)
 }
@@ -146,7 +150,7 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           const title = escapeHtml(String(quiz.title ?? 'Quiz'))
           const questions = readQuestions(quiz)
           let currentIndex = 0
-          let selectedAnswers: Map<number, number> = new Map()
+          let selectedAnswers: Map<number, number[]> = new Map()
 
           if (questions.length === 0) {
             container.innerHTML = '<p>Ce quiz ne contient aucune question.</p>'
@@ -176,11 +180,11 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           const submitQuiz = async (): Promise<void> => {
             const answers = questions.map((question) => ({
               questionId: question.id,
-              answerId: Number(selectedAnswers.get(question.id) ?? 0),
+              answerIds: selectedAnswers.get(question.id) ?? [],
               responseTimeMs: 0,
             }))
 
-          if (answers.some((answer) => !Number.isFinite(answer.answerId) || answer.answerId <= 0)) {
+          if (answers.some((answer) => answer.answerIds.length === 0)) {
             if (message) {
               message.textContent = 'Réponds à toutes les questions avant de valider.'
             }
@@ -229,46 +233,27 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
 
           progress.textContent = `Question ${currentIndex + 1}/${questions.length}`
 
+          const template = question.type === 'QCM' ? renderQcmTemplate : renderTrueFalseTemplate
+          const { html, mount, restoreSelection } = template(question, escapeHtml)
+
           currentQuestionContainer.innerHTML = `
             <fieldset class="card play-quiz-question">
               <legend>Question ${currentIndex + 1}</legend>
               <p>${escapeHtml(question.label)}</p>
-              <div class="answer-options">
-                ${question.answers
-                  .map(
-                    (answer) => `
-                      <label class="answer-option">
-                        <input type="radio" name="current-question-${question.id}" value="${answer.id}">
-                        <span class="answer-option__text">${escapeHtml(answer.content)}</span>
-                      </label>
-                    `,
-                  )
-                  .join('')}
-              </div>
+              ${html}
             </fieldset>
           `
 
-          const savedAnswerId = selectedAnswers.get(question.id)
-          if (Number.isFinite(savedAnswerId)) {
-            const savedInput = currentQuestionContainer.querySelector<HTMLInputElement>(`input[value="${savedAnswerId}"]`)
-            if (savedInput) {
-              savedInput.checked = true
-            }
-          }
-
-          const radioInputs = currentQuestionContainer.querySelectorAll<HTMLInputElement>('input[type="radio"]')
-          radioInputs.forEach((input) => {
-            input.addEventListener('change', () => {
-              selectedAnswers.set(question.id, Number(input.value))
-              nextButton.disabled = false
-              if (message) {
-                message.textContent = ''
-              }
-            })
+          mount(currentQuestionContainer, (answerIds) => {
+            selectedAnswers.set(question.id, answerIds)
+            nextButton.disabled = answerIds.length === 0
+            if (message) message.textContent = ''
           })
+          restoreSelection(currentQuestionContainer, selectedAnswers.get(question.id) ?? [])
 
           nextButton.textContent = currentIndex === questions.length - 1 ? 'Terminer' : 'Suivant'
-          nextButton.disabled = !selectedAnswers.has(question.id)
+          const selected = selectedAnswers.get(question.id) ?? []
+          nextButton.disabled = selected.length === 0
         }
 
         nextButton.addEventListener('click', async () => {
@@ -278,7 +263,7 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           }
 
           const selected = selectedAnswers.get(currentQuestion.id)
-          if (selected === undefined || selected <= 0) {
+          if (!selected || selected.length === 0) {
             if (message) {
               message.textContent = 'Choisis une réponse pour continuer.'
             }
