@@ -259,10 +259,8 @@ if (app) {
     const page = renderPageByRoute(route, pageContext)
 
     app.innerHTML = `
-      <div>
-        ${renderNav(isAuthenticated)}
-        ${page.content}
-      </div>
+      ${renderNav(isAuthenticated)}
+      ${page.content}
     `
 
     page.mount?.()
