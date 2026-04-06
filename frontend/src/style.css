@@ -3,22 +3,22 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color: #eef3ff;
-  background-color: #b4a7e0;
-  --bg-start: #7e8ffe;
-  --bg-mid: #7278b7;
-  --bg-end: #777bb4;
-  --neon: #6fefff;
-  --neon-soft: #b6f8ff;
-  --neon-rgb: 111, 239, 255;
-  --surface: rgba(22, 20, 48, 0.7);
-  --surface-border: rgba(var(--neon-rgb), 0.22);
-  --field-border: rgba(var(--neon-rgb), 0.34);
-  --focus-ring: rgba(var(--neon-rgb), 0.18);
-  --button-bg: rgba(var(--neon-rgb), 0.12);
-  --button-bg-hover: rgba(var(--neon-rgb), 0.2);
-  --button-shadow: 0 0 14px rgba(var(--neon-rgb), 0.16);
-  --heading-glow: 0 0 14px rgba(var(--neon-rgb), 0.3);
+  color: #1e1040;
+  background-color: #f3f0ff;
+  --bg-start: #ede8ff;
+  --bg-mid:   #f3f0ff;
+  --bg-end:   #e8e2ff;
+  --neon: #7c3aed;
+  --neon-soft: #a78bfa;
+  --neon-rgb: 124, 58, 237;
+  --surface: rgba(250, 248, 255, 0.96);
+  --surface-border: rgba(var(--neon-rgb), 0.15);
+  --field-border: rgba(var(--neon-rgb), 0.25);
+  --focus-ring: rgba(var(--neon-rgb), 0.15);
+  --button-bg: rgba(var(--neon-rgb), 0.07);
+  --button-bg-hover: rgba(var(--neon-rgb), 0.14);
+  --button-shadow: 0 4px 14px rgba(var(--neon-rgb), 0.18);
+  --heading-glow: none;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -30,7 +30,7 @@ a,
 button {
   border-radius: 999px;
   border: 1px solid var(--field-border);
-  color: #f4f8ff;
+  color: #1e1040;
   padding: 0.45rem 0.9rem;
   font-size: 0.92rem;
   font-weight: 600;
@@ -51,7 +51,13 @@ body {
   display: block;
   min-width: 320px;
   min-height: 100vh;
-  background: radial-gradient(circle at top left, var(--bg-start) 0%, var(--bg-mid) 42%, var(--bg-end) 100%);
+  background:
+    linear-gradient(135deg, rgba(124, 58, 237, 0.08) 25%, transparent 25%) -18px 0,
+    linear-gradient(225deg, rgba(124, 58, 237, 0.08) 25%, transparent 25%) -18px 0,
+    linear-gradient(315deg, rgba(124, 58, 237, 0.08) 25%, transparent 25%),
+    linear-gradient(45deg,  rgba(124, 58, 237, 0.08) 25%, transparent 25%),
+    linear-gradient(150deg, var(--bg-start) 0%, var(--bg-mid) 50%, var(--bg-end) 100%);
+  background-size: 36px 36px, 36px 36px, 36px 36px, 36px 36px, 100% 100%;
 }
 
 h1 {
@@ -61,7 +67,7 @@ h1 {
   font-synthesis: initial;
   color: var(--neon);
   margin: 1.25rem 0 1.5rem;
-  text-shadow: var(--heading-glow);
+  text-shadow: none;
 }
 
 #app {
@@ -77,7 +83,7 @@ h1 {
   border-radius: 16px;
   border: 1px solid var(--surface-border);
   background: var(--surface);
-  box-shadow: 0 10px 28px rgba(5, 8, 24, 0.34);
+  box-shadow: 0 4px 24px rgba(var(--neon-rgb), 0.07), 0 1px 3px rgba(0,0,0,0.05);
 }
 
 form {
@@ -111,8 +117,8 @@ hr {
 input {
   border-radius: 10px;
   border: 1px solid var(--field-border);
-  background: rgba(255, 255, 255, 0.06);
-  color: #f7fbff;
+  background: #ffffff;
+  color: #1e1040;
   padding: 0.62rem 0.8rem;
 }
 
@@ -144,7 +150,7 @@ input:focus {
   padding: 0;
   border: none;
   background: transparent;
-  color: #e8f1ff;
+  color: var(--neon);
   font-size: 1rem;
   line-height: 1;
   display: inline-flex;
@@ -176,7 +182,7 @@ button {
   font-weight: 600;
   font-family: inherit;
   background: var(--button-bg);
-  color: #eff4ff;
+  color: #1e1040;
   cursor: pointer;
   transition: 0.2s ease;
 }
@@ -263,7 +269,7 @@ li {
 
 .results-table th:not(:last-child),
 .results-table td:not(:last-child) {
-  border-right: 3px solid #ffffff;
+  border-right: 2px solid rgba(var(--neon-rgb), 0.25);
 }
 
 .results-table thead th {
@@ -320,8 +326,8 @@ li {
   min-height: 40px;
   border-radius: 100px;
   border: 1px solid var(--field-border);
-  background: var(--button-bg);
-  color: #eff4ff;
+  background: #ffffff;
+  color: #1e1040;
   font-weight: 700;
   cursor: pointer;
   user-select: none;
@@ -335,8 +341,9 @@ li {
 }
 
 .answer-option input:checked + .answer-option__text {
-  background: var(--bg-start);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  background: rgba(var(--neon-rgb), 0.28);
+  border-color: var(--neon);
+  box-shadow: 0 0 0 3px var(--focus-ring), 0 0 12px rgba(var(--neon-rgb), 0.2);
 }
 
 .answer-option input:focus-visible + .answer-option__text {

@@ -1,7 +1,7 @@
 import type { PageContext, PageRenderResult } from './types'
 import { warmPlayPayload } from '../sessionWarmupCache'
 
-export const renderHomePage = ({ home, isAuthenticated, status, escapeHtml, apiPost, navigate }: PageContext): PageRenderResult => {
+export const renderHomePage = ({ home, isAuthenticated, escapeHtml, apiPost, navigate }: PageContext): PageRenderResult => {
   return {
     content: `
       <section class="card">
