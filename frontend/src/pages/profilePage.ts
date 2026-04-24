@@ -32,7 +32,6 @@ export const renderProfilePage = ({ isAuthenticated, me, escapeHtml, navigate, a
         <div class="profile-details">
           <p><strong>Pseudo :</strong> ${escapeHtml(String(user.displayName ?? ''))}</p>
           <p><strong>Email :</strong> ${escapeHtml(String(user.email ?? ''))}</p>
-          <p><strong>Rôle :</strong> ${escapeHtml(String(((user.roles as unknown[]) ?? []).join(', ')))}</p>
           ${hasQuizzesCount ? `<p><strong>${quizzesLabel} :</strong> ${escapeHtml(String(quizzesCount))}</p>` : ''}
         </div>
 

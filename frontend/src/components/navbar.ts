@@ -1,6 +1,6 @@
 import './navbar.css'
 
-const logoUrl = new URL('../img/Quizaro_Contour_Logo/transparent-logo-good.svg', import.meta.url).href
+const logoUrl = '/img/Quizaro_Contour_Logo/transparent-logo-good.svg'
 
 export const renderNav = (isAuthenticated: boolean): string => {
   return `

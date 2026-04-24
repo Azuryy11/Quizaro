@@ -124,11 +124,15 @@ export const renderResultsPage = ({ isAuthenticated, navigate, apiGet, apiPost, 
           }
 
           const totalQuestions = Number(quiz.totalQuestions ?? 0)
+          const quizId = Number(quiz.id ?? 0)
           const quizTitle = escapeHtml(String(quiz.title ?? 'Quiz'))
           const sessionCode = escapeHtml(String(session.code ?? ''))
           const sessionStatusRaw = String(session.status ?? 'INCONNU')
           const sessionStatus = escapeHtml(sessionStatusRaw)
           const isOwner = Boolean(session.isOwner)
+          const reviewStorageKey = `reviewQuizSession:${sessionId}`
+          const hasReview = window.sessionStorage.getItem(reviewStorageKey) !== null
+          const canReview = sessionStatusRaw !== 'FINISHED' && hasReview
 
           const results = rawResults.map((entry) => {
             const result = entry as Record<string, unknown>
@@ -187,9 +191,22 @@ export const renderResultsPage = ({ isAuthenticated, navigate, apiGet, apiPost, 
               </table>
             </div>
 
-            ${isOwner && Number.isFinite(quizSessionId) && quizSessionId > 0
-              ? '<button id="finish-quiz-session" class="play-quiz-submit" type="button">Finir la session</button>' : ''}
+            <div class="results-actions">
+              ${canReview
+                ? '<button id="go-review-session" class="play-quiz-submit" type="button">Voir les réponses</button>'
+                : ''}
+              ${isOwner && Number.isFinite(quizSessionId) && quizSessionId > 0
+                ? '<button id="finish-quiz-session" class="play-quiz-submit" type="button">Finir la session</button>'
+                : ''}
+            </div>
           `
+
+          const reviewButton = content.querySelector<HTMLButtonElement>('#go-review-session')
+          if (reviewButton) {
+            reviewButton.addEventListener('click', () => {
+              navigate('/review/' + sessionId)
+            })
+          }
 
           const finishButton = content.querySelector<HTMLButtonElement>('#finish-quiz-session')
           if (finishButton) {
@@ -215,6 +232,10 @@ export const renderResultsPage = ({ isAuthenticated, navigate, apiGet, apiPost, 
           
 
           if (sessionStatusRaw === 'FINISHED') {
+            window.sessionStorage.removeItem(reviewStorageKey)
+            if (Number.isFinite(quizId) && quizId > 0) {
+              window.sessionStorage.removeItem(`activeQuizSession:${quizId}`)
+            }
             if (resultsPollIntervalId !== null) {
               window.clearInterval(resultsPollIntervalId)
               resultsPollIntervalId = null
@@ -224,6 +245,25 @@ export const renderResultsPage = ({ isAuthenticated, navigate, apiGet, apiPost, 
             clearRedirectTimers()
           }
         } catch (error) {
+          const apiError = error as Error & { status?: number }
+          if (apiError.status === 403) {
+            content.innerHTML = `
+              <div class="card">
+                <h3>Accès refusé</h3>
+                <p>Tu n'as pas le droit d'accéder à cette session de quiz.</p>
+                <button id="return-home-results-403" class="play-quiz-submit" type="button">Retourner à l'accueil</button>
+              </div>
+            `
+            const returnButton = content.querySelector<HTMLButtonElement>('#return-home-results-403')
+            if (returnButton) {
+              returnButton.addEventListener('click', () => navigate('/'))
+            }
+            if (resultsPollIntervalId !== null) {
+              window.clearInterval(resultsPollIntervalId)
+              resultsPollIntervalId = null
+            }
+            return
+          }
           if (message) {
             message.textContent = (error as Error).message
           }

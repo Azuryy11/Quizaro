@@ -48,7 +48,7 @@ final class ApiQuizSessionController extends AbstractController
         $quizSession = new QuizSession();
         $quizSession->setQuiz($quiz);
         $quizSession->setCode(strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)));
-        $quizSession->setStatus(QuizSession::STATUS_RUNNING);
+        $quizSession->setStatus(QuizSession::STATUS_WAITING);
         $quizSession->setOwner($user);
 
         $playerSession = new PlayerSession();
@@ -67,7 +67,11 @@ final class ApiQuizSessionController extends AbstractController
                 'code' => $quizSession->getCode(),
                 'status' => $quizSession->getStatus(),
                 'isOwner' => true,
+                'playerCount' => $quizSession->getPlayerSessions()->count(),
                 'startedAt' => $quizSession->getStartedAt()->format(DATE_ATOM),
+                'quizTitle' => $quiz->getTitle(),
+                'quizDescription' => $quiz->getDescription(),
+                'quizId' => $quiz->getId(),
             ],
             'quiz' => $this->normalizeQuizForPlay($quiz),
         ]);
@@ -147,9 +151,121 @@ final class ApiQuizSessionController extends AbstractController
                 'code' => $quizSession->getCode(),
                 'status' => $quizSession->getStatus(),
                 'isOwner' => $quizSession->getOwner()?->getId() === $user->getId(),
+                'playerCount' => $quizSession->getPlayerSessions()->count(),
                 'startedAt' => $quizSession->getStartedAt()->format(DATE_ATOM),
+                'quizTitle' => $quiz->getTitle(),
+                'quizDescription' => $quiz->getDescription(),
+                'quizId' => $quiz->getId(),
             ],
             'quiz' => $this->normalizeQuizForPlay($quiz),
+        ]);
+    }
+
+    #[Route('/api/quiz-sessions/{id}/lobby', name: 'api_quiz_sessions_lobby', methods: ['GET'])]
+    public function getLobby(int $id, EntityManagerInterface $entityManager): JsonResponse
+    {
+        /** @var User|null $user */
+        $user = $this->getUser();
+
+        if (null === $user) {
+            return $this->json([
+                'message' => 'Connecte-toi pour accéder au lobby.',
+            ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $quizSession = $entityManager->getRepository(QuizSession::class)->find($id);
+        if (!$quizSession instanceof QuizSession) {
+            return $this->json([
+                'message' => 'Session introuvable.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $isOwner = $quizSession->getOwner()?->getId() === $user->getId();
+        $playerSession = $entityManager->getRepository(PlayerSession::class)->findOneBy([
+            'quizSession' => $quizSession,
+            'user' => $user,
+        ]);
+
+        if (!$isOwner && !($playerSession instanceof PlayerSession)) {
+            return $this->json([
+                'message' => 'Accès refusé à ce lobby.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        $quiz = $quizSession->getQuiz();
+        if (!$quiz instanceof Quiz) {
+            return $this->json([
+                'message' => 'Quiz introuvable pour cette session.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        return $this->json([
+            'session' => [
+                'quizSessionId' => $quizSession->getId(),
+                'code' => $quizSession->getCode(),
+                'status' => $quizSession->getStatus(),
+                'isOwner' => $isOwner,
+                'playerCount' => $quizSession->getPlayerSessions()->count(),
+                'startedAt' => $quizSession->getStartedAt()->format(DATE_ATOM),
+            ],
+            'quiz' => [
+                'id' => $quiz->getId(),
+                'title' => $quiz->getTitle(),
+                'description' => $quiz->getDescription(),
+            ],
+        ]);
+    }
+
+    #[Route('/api/quiz-sessions/{id}/start', name: 'api_quiz_sessions_start', methods: ['POST'])]
+    public function startSession(int $id, EntityManagerInterface $entityManager): JsonResponse
+    {
+        /** @var User|null $user */
+        $user = $this->getUser();
+
+        if (null === $user) {
+            return $this->json([
+                'message' => 'Connecte-toi pour démarrer une session.',
+            ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $quizSession = $entityManager->getRepository(QuizSession::class)->find($id);
+        if (!$quizSession instanceof QuizSession) {
+            return $this->json([
+                'message' => 'Session introuvable.',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        if ($quizSession->getOwner()?->getId() !== $user->getId()) {
+            return $this->json([
+                'message' => 'Seul le propriétaire peut démarrer la session.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        if (QuizSession::STATUS_FINISHED === $quizSession->getStatus()) {
+            return $this->json([
+                'message' => 'Cette session est terminée.',
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (QuizSession::STATUS_RUNNING === $quizSession->getStatus()) {
+            return $this->json([
+                'message' => 'La session est déjà en cours.',
+                'session' => [
+                    'quizSessionId' => $quizSession->getId(),
+                    'status' => $quizSession->getStatus(),
+                ],
+            ]);
+        }
+
+        $quizSession->setStatus(QuizSession::STATUS_RUNNING);
+        $entityManager->flush();
+
+        return $this->json([
+            'message' => 'Session démarrée.',
+            'session' => [
+                'quizSessionId' => $quizSession->getId(),
+                'status' => $quizSession->getStatus(),
+            ],
         ]);
     }
 
@@ -410,9 +526,9 @@ final class ApiQuizSessionController extends AbstractController
             $answerIds = $answerPayload['answerIds'] ?? null;
             $responseTimeMs = $answerPayload['responseTimeMs'] ?? 0;
 
-            if (!is_int($questionId) || !is_array($answerIds) || [] === $answerIds || !array_is_list($answerIds)) {
+            if (!is_int($questionId) || !is_array($answerIds) || !array_is_list($answerIds)) {
                 return $this->json([
-                    'message' => sprintf('questionId et answerIds (tableau non vide) sont requis pour la réponse #%d.', $index + 1),
+                    'message' => sprintf('questionId et answerIds sont requis pour la réponse #%d.', $index + 1),
                 ], Response::HTTP_BAD_REQUEST);
             }
 
@@ -468,6 +584,18 @@ final class ApiQuizSessionController extends AbstractController
                 }
             }
 
+            if ([] === $selectedAnswerIds) {
+                sort($correctAnswerIds);
+                $details[] = [
+                    'questionId' => $question->getId(),
+                    'answerIds' => [],
+                    'correctAnswerIds' => $correctAnswerIds,
+                    'isCorrect' => false,
+                ];
+                ++$submitted;
+                continue;
+            }
+
             foreach ($selectedAnswerIds as $selectedAnswerId) {
                 if (!isset($answerMap[$selectedAnswerId])) {
                     return $this->json([
@@ -499,6 +627,7 @@ final class ApiQuizSessionController extends AbstractController
             $details[] = [
                 'questionId' => $question->getId(),
                 'answerIds' => $selectedAnswerIds,
+                'correctAnswerIds' => $correctAnswerIds,
                 'isCorrect' => $isCorrect,
             ];
         }

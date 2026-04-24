@@ -12,6 +12,9 @@ import { renderPlayQuizPage } from './pages/playQuizPage'
 import { renderMyQuizzesPage } from './pages/myQuizzesPage'
 import { renderEditQuizPage } from './pages/editQuizPage'
 import { renderResultsPage } from './pages/resultsPage'
+import { renderReviewPage } from './pages/reviewPage'
+import { renderWaitingSessionPage } from './pages/waitingSessionPage'
+import { renderJoinPage } from './pages/joinPage'
 import type { PageContext, PageRenderResult } from './pages/types'
 
 const app = document.querySelector<HTMLDivElement>('#app')
@@ -132,10 +135,28 @@ const renderPageByRoute = (route: string, context: PageContext): PageRenderResul
     return renderResultsPage(context, quizSessionId)
   }
 
+  const reviewRouteMatch = route.match(/^\/review\/(\d+)$/)
+  if (reviewRouteMatch) {
+    const quizSessionId = Number(reviewRouteMatch[1])
+    return renderReviewPage(context, quizSessionId)
+  }
+
   const editRouteMatch = route.match(/^\/edit-quiz\/(\d+)$/)
   if (editRouteMatch) {
     const quizId = Number(editRouteMatch[1])
     return renderEditQuizPage(context, quizId)
+  }
+
+  const waitingRouteMatch = route.match(/^\/waiting-session\/(\d+)$/)
+  if (waitingRouteMatch) {
+    const quizSessionId = Number(waitingRouteMatch[1])
+    return renderWaitingSessionPage(context, quizSessionId)
+  }
+
+  const joinRouteMatch = route.match(/^\/join\/([A-Za-z0-9]+)$/)
+  if (joinRouteMatch) {
+    const code = joinRouteMatch[1]
+    return renderJoinPage(context, code)
   }
 
   const playRouteMatch = route.match(/^\/play-quiz\/(\d+)$/)

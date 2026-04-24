@@ -309,6 +309,18 @@ final class ApiQuizController extends AbstractController
                 ], Response::HTTP_BAD_REQUEST);
             }
 
+            $timeLimitRaw = $questionPayload['timeLimit'] ?? 30;
+            if (!is_int($timeLimitRaw)) {
+                return $this->json([
+                    'message' => sprintf('timeLimit doit être un entier pour la question #%d.', $index + 1),
+                ], Response::HTTP_BAD_REQUEST);
+            }
+            if ($timeLimitRaw < 5 || $timeLimitRaw > 300) {
+                return $this->json([
+                    'message' => sprintf('timeLimit doit être compris entre 5 et 300 secondes pour la question #%d.', $index + 1),
+                ], Response::HTTP_BAD_REQUEST);
+            }
+
             if (Question::TYPE_TRUE_FALSE === $type) {
                 $correctAnswer = $questionPayload['correctAnswer'] ?? null;
 
@@ -321,6 +333,7 @@ final class ApiQuizController extends AbstractController
                 $normalizedQuestions[] = [
                     'label' => $label,
                     'type' => Question::TYPE_TRUE_FALSE,
+                    'timeLimit' => $timeLimitRaw,
                     'answers' => ['VRAI', 'FAUX'],
                     'correctIndexes' => [$correctAnswer ? 0 : 1],
                 ];
@@ -402,6 +415,7 @@ final class ApiQuizController extends AbstractController
             $normalizedQuestions[] = [
                 'label' => $label,
                 'type' => Question::TYPE_QCM,
+                'timeLimit' => $timeLimitRaw,
                 'answers' => $answers,
                 'correctIndexes' => $correctIndexes,
             ];
@@ -432,7 +446,7 @@ final class ApiQuizController extends AbstractController
             $question->setQuiz($quiz);
             $question->setLabel($questionPayload['label']);
             $question->setType($questionPayload['type']);
-            $question->setTimeLimit(30);
+            $question->setTimeLimit($questionPayload['timeLimit'] ?? 30);
             $question->setPosition($index + 1);
 
             if (Question::TYPE_TRUE_FALSE === $questionPayload['type']) {
@@ -518,6 +532,7 @@ final class ApiQuizController extends AbstractController
                 'id' => $question->getId(),
                 'label' => $question->getLabel(),
                 'type' => $question->getType(),
+                'timeLimit' => $question->getTimeLimit(),
                 'position' => $question->getPosition(),
                 'answers' => array_map(static function (QuestionAnswer $questionAnswer): array {
                     $answer = $questionAnswer->getAnswer();

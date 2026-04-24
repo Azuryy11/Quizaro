@@ -7,7 +7,14 @@ type PlayQuizQuestion = {
   id: number
   label: string
   type: string
+  timeLimit: number
   answers: Array<{ id: number; content: string }>
+}
+
+type SubmitDetail = {
+  questionId: number
+  answerIds: number[]
+  correctAnswerIds: number[]
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -36,9 +43,11 @@ const readQuestions = (quiz: Record<string, unknown>): PlayQuizQuestion[] => {
       }
 
       const type = String(question.type ?? 'TRUE_FALSE')
-      return { id, label, type, answers }
+      const parsedTimeLimit = Number(question.timeLimit)
+      const timeLimit = Number.isFinite(parsedTimeLimit) ? Math.min(300, Math.max(5, Math.trunc(parsedTimeLimit))) : 30
+      return { id, label, type, timeLimit, answers }
     })
-    .filter((question): question is PlayQuizQuestion => question !== null)
+      .filter((question): question is PlayQuizQuestion => question !== null)
 }
 
 export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost, escapeHtml }: PageContext, quizId: number): PageRenderResult => {
@@ -124,6 +133,7 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           const playerSessionId = Number(session?.playerSessionId ?? 0)
           const sessionCode = String(session?.code ?? '').trim()
           const quizSessionId = Number(session?.quizSessionId ?? 0)
+          const sessionStatus = String(session?.status ?? 'RUNNING')
 
           if (!quiz) {
             container.innerHTML = '<p>Quiz introuvable.</p>'
@@ -147,10 +157,18 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
             )
           }
 
+          if (sessionStatus === 'WAITING' && Number.isFinite(quizSessionId) && quizSessionId > 0) {
+            navigate('/waiting-session/' + quizSessionId)
+            return
+          }
+
           const title = escapeHtml(String(quiz.title ?? 'Quiz'))
           const questions = readQuestions(quiz)
           let currentIndex = 0
           let selectedAnswers: Map<number, number[]> = new Map()
+          let timerId: number | null = null
+          let questionStartedAtMs = 0
+          const responseTimes = new Map<number, number>()
 
           if (questions.length === 0) {
             container.innerHTML = '<p>Ce quiz ne contient aucune question.</p>'
@@ -163,6 +181,7 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
              
            <form id="play-quiz-form">
               <p id="play-quiz-progress"></p>
+              <p id="play-quiz-timer"></p>
               <div id="play-quiz-current-question"></div>
               <button id="play-quiz-next-btn" class="play-quiz-submit" type="button" disabled>Suivant</button>
             </form>
@@ -172,31 +191,66 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           const progress = document.querySelector<HTMLParagraphElement>('#play-quiz-progress')
           const currentQuestionContainer = document.querySelector<HTMLDivElement>('#play-quiz-current-question')
           const nextButton = document.querySelector<HTMLButtonElement>('#play-quiz-next-btn')
+          const timerEl = document.querySelector<HTMLParagraphElement>('#play-quiz-timer')
 
           if (!form || !progress || !currentQuestionContainer || !nextButton) {
             return
           }
 
           const submitQuiz = async (): Promise<void> => {
+            if (timerId !== null) {
+              window.clearInterval(timerId)
+              timerId = null
+            }
             const answers = questions.map((question) => ({
               questionId: question.id,
               answerIds: selectedAnswers.get(question.id) ?? [],
-              responseTimeMs: 0,
+              responseTimeMs: responseTimes.get(question.id) ?? question.timeLimit * 1000,
             }))
 
-          if (answers.some((answer) => answer.answerIds.length === 0)) {
-            if (message) {
-              message.textContent = 'Réponds à toutes les questions avant de valider.'
-            }
-            return
-          }
-
           try {
-            await apiPost(`/api/quizzes/${quizId}/submit`, {
+            const submitResult = await apiPost(`/api/quizzes/${quizId}/submit`, {
               playerSessionId,
               quizSessionId,
               answers,
             })
+
+            const rawResult = (submitResult.result as Record<string, unknown> | undefined) ?? undefined
+            const rawDetails = Array.isArray(rawResult?.details) ? rawResult.details : []
+            const normalizedDetails = rawDetails
+              .map((entry) => {
+                const detail = entry as Record<string, unknown>
+                const questionId = Number(detail.questionId)
+                const answerIds = Array.isArray(detail.answerIds)
+                  ? detail.answerIds.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+                  : []
+                const correctAnswerIds = Array.isArray(detail.correctAnswerIds)
+                  ? detail.correctAnswerIds.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+                  : []
+
+                if (!Number.isFinite(questionId) || questionId <= 0) {
+                  return null
+                }
+
+                return {
+                  questionId,
+                  answerIds,
+                  correctAnswerIds,
+                } satisfies SubmitDetail
+              })
+              .filter((detail): detail is SubmitDetail => detail !== null)
+
+            window.sessionStorage.setItem(
+              `reviewQuizSession:${quizSessionId}`,
+              JSON.stringify({
+                quizSessionId,
+                quizId,
+                title: String(quiz.title ?? 'Quiz'),
+                questions,
+                details: normalizedDetails,
+                submittedAt: new Date().toISOString(),
+              }),
+            )
 
             navigate('/results/' + quizSessionId)
             return
@@ -230,6 +284,38 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           if (!question) {
             return
           }
+
+          if (timerId !== null) {
+            window.clearInterval(timerId)
+            timerId = null
+          }
+
+          questionStartedAtMs = Date.now()
+          let remainingSeconds = question.timeLimit
+          if (timerEl) {
+            timerEl.textContent = `Temps restant : ${remainingSeconds}s`
+          }
+
+          timerId = window.setInterval(() => {
+            remainingSeconds -= 1
+            if (timerEl) {
+              timerEl.textContent = `Temps restant : ${Math.max(0, remainingSeconds)}s`
+            }
+            if (remainingSeconds <= 0) {
+              if (timerId !== null) {
+                window.clearInterval(timerId)
+                timerId = null
+              }
+              const elapsed = Math.min(Date.now() - questionStartedAtMs, question.timeLimit * 1000)
+              responseTimes.set(question.id, elapsed)
+              if (currentIndex < questions.length - 1) {
+                currentIndex += 1
+                renderCurrentQuestion()
+                return
+              }
+              void submitQuiz()
+            }
+          }, 1000)
 
           progress.textContent = `Question ${currentIndex + 1}/${questions.length}`
 
@@ -270,6 +356,14 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
             return
           }
 
+          const elapsed = Math.min(Date.now() - questionStartedAtMs, currentQuestion.timeLimit * 1000)
+          responseTimes.set(currentQuestion.id, elapsed)
+
+          if (timerId !== null) {
+            window.clearInterval(timerId)
+            timerId = null
+          }
+
           if (currentIndex < questions.length - 1) {
             currentIndex += 1
             renderCurrentQuestion()
@@ -279,11 +373,27 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
           await submitQuiz()
         })
 
-      renderCurrentQuestion()
+        renderCurrentQuestion()
         } catch (error) {
           await minimumDelay
 
           if (!document.body.contains(container)) {
+            return
+          }
+
+          const apiError = error as Error & { status?: number }
+          if (apiError.status === 403) {
+            container.innerHTML = `
+              <div class="card">
+                <h3>Accès refusé</h3>
+                <p>Tu n'as pas le droit d'accéder à ce quiz.</p>
+                <button id="return-home-403" class="play-quiz-submit" type="button">Retourner à l'accueil</button>
+              </div>
+            `
+            const returnButton = container.querySelector<HTMLButtonElement>('#return-home-403')
+            if (returnButton) {
+              returnButton.addEventListener('click', () => navigate('/'))
+            }
             return
           }
 

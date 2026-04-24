@@ -1,5 +1,20 @@
 import type { PageContext, PageRenderResult } from './types'
 
+type CreateQuestionPayload =
+  | {
+      label: string
+      type: 'QCM'
+      timeLimit: number
+      answers: string[]
+      correctAnswers: number[]
+    }
+  | {
+      label: string
+      type: 'TRUE_FALSE'
+      timeLimit: number
+      correctAnswer: boolean
+    }
+
 const renderQuestionBlock = (index: number): string => {
   const questionNumber = index + 1
 
@@ -14,6 +29,10 @@ const renderQuestionBlock = (index: number): string => {
         <option value="TRUE_FALSE">Vrai/Faux</option>
         <option value="QCM">QCM</option>
       </select>
+
+      <label>Limite de temps (secondes)</label>
+      <input name="question-time-limit" type="number" min="5" max="60" step="1" value="30" required>
+
 
       <div data-true-false-fields>
         <label>Bonne réponse</label>
@@ -184,6 +203,9 @@ export const renderCreateQuizPage = ({ isAuthenticated, navigate, apiPost }: Pag
           .map((questionCard) => {
             const labelInput = questionCard.querySelector<HTMLInputElement>('input[name="question-label"]')
             const typeSelect = questionCard.querySelector<HTMLSelectElement>('select[name="question-type"]')
+            const timeLimitInput = questionCard.querySelector<HTMLInputElement>('input[name="question-time-limit"]')
+            const parsedTimeLimit = Number.parseInt(String(timeLimitInput?.value ?? '30'), 10)
+            const timeLimit = Number.isInteger(parsedTimeLimit) ? Math.min(300, Math.max(5, parsedTimeLimit)) : 30
             const correctSelect = questionCard.querySelector<HTMLSelectElement>('select[name="question-correct"]')
             const qcmAnswerInputs = Array.from(
               questionCard.querySelectorAll<HTMLInputElement>('input[name="question-qcm-answer"]'),
@@ -214,16 +236,18 @@ export const renderCreateQuizPage = ({ isAuthenticated, navigate, apiPost }: Pag
                 type: 'QCM',
                 answers,
                 correctAnswers,
-              }
+                timeLimit,
+              } satisfies CreateQuestionPayload
             }
 
             return {
               label,
               type: 'TRUE_FALSE',
+              timeLimit,
               correctAnswer: String(correctSelect?.value ?? 'true') === 'true',
-            }
+            } satisfies CreateQuestionPayload
           })
-          .filter((question): question is Record<string, unknown> => question !== null)
+          .filter((question): question is CreateQuestionPayload => question !== null)
 
         if ('' === title || questions.length === 0) {
           if (message) {

@@ -3,10 +3,26 @@ import type { PageContext, PageRenderResult } from './types'
 type EditableQuestion = {
   label: string
   type: 'TRUE_FALSE' | 'QCM'
+  timeLimit: number
   correctAnswer?: boolean
   answers?: string[]
   correctAnswers?: number[]
 }
+
+type EditQuestionPayload =
+  | {
+      label: string
+      type: 'QCM'
+      timeLimit: number
+      answers: string[]
+      correctAnswers: number[]
+    }
+  | {
+      label: string
+      type: 'TRUE_FALSE'
+      timeLimit: number
+      correctAnswer: boolean
+    }
 
 const normalizeCorrectAnswer = (rawQuestion: Record<string, unknown>): boolean => {
   const answers = Array.isArray(rawQuestion.answers) ? (rawQuestion.answers as unknown[]) : []
@@ -33,6 +49,8 @@ const normalizeQcmQuestion = (rawQuestion: Record<string, unknown>): EditableQue
     .sort((left, right) => Number(left.position ?? 0) - Number(right.position ?? 0))
     .map((answer) => String(answer.content ?? '').trim())
     .filter((content) => content !== '')
+  const parsedTimeLimit = Number(rawQuestion.timeLimit)
+  const timeLimit = Number.isFinite(parsedTimeLimit) ? Math.min(300, Math.max(5, Math.trunc(parsedTimeLimit))) : 30
 
   const correctAnswers = answers
     .map((answer, index) => {
@@ -44,6 +62,7 @@ const normalizeQcmQuestion = (rawQuestion: Record<string, unknown>): EditableQue
   return {
     label: String(rawQuestion.label ?? '').trim(),
     type: 'QCM',
+    timeLimit,
     answers: normalizedAnswers,
     correctAnswers,
   }
@@ -57,6 +76,8 @@ const extractEditableQuestions = (quiz: Record<string, unknown>): EditableQuesti
     .filter((question): question is Record<string, unknown> => Boolean(question))
     .map((question) => {
       const rawType = String(question.type ?? 'TRUE_FALSE').toUpperCase()
+      const parsedTimeLimit = Number(question.timeLimit)
+      const timeLimit = Number.isFinite(parsedTimeLimit) ? Math.min(300, Math.max(5, Math.trunc(parsedTimeLimit))) : 30
 
       if (rawType === 'QCM') {
         return normalizeQcmQuestion(question)
@@ -65,6 +86,7 @@ const extractEditableQuestions = (quiz: Record<string, unknown>): EditableQuesti
       return {
         label: String(question.label ?? '').trim(),
         type: 'TRUE_FALSE' as const,
+        timeLimit,
         correctAnswer: normalizeCorrectAnswer(question),
       }
     })
@@ -85,6 +107,10 @@ const renderQuestionBlock = (index: number): string => {
         <option value="TRUE_FALSE">Vrai/Faux</option>
         <option value="QCM">QCM</option>
       </select>
+
+      <label>Limite de temps (secondes)</label>
+      <input name="question-time-limit" type="number" min="5" max="60" step="1" value="30" required>
+
 
       <div data-true-false-fields>
         <label>Bonne réponse</label>
@@ -227,6 +253,10 @@ export const renderEditQuizPage = (
         if (inserted) {
           const labelInput = inserted.querySelector<HTMLInputElement>('input[name="question-label"]')
           const typeSelect = inserted.querySelector<HTMLSelectElement>('select[name="question-type"]')
+          const timeLimitInput = inserted.querySelector<HTMLInputElement>('input[name="question-time-limit"]')
+          if (timeLimitInput && question) {
+            timeLimitInput.value = String(question.timeLimit)
+          }
           const correctSelect = inserted.querySelector<HTMLSelectElement>('select[name="question-correct"]')
           const qcmAnswerInputs = Array.from(
             inserted.querySelectorAll<HTMLInputElement>('input[name="question-qcm-answer"]'),
@@ -323,11 +353,40 @@ export const renderEditQuizPage = (
             message.textContent = ''
           }
         } catch (error) {
+          const apiError = error as Error & { status?: number }
+          if (apiError.status === 403) {
+            throw error
+          }
           if (message) {
             message.textContent = `Erreur: ${escapeHtml((error as Error).message)}`
           }
         }
       }
+
+      const checkAccessAndLoad = async (): Promise<void> => {
+        try {
+          await loadQuiz()
+        } catch (error) {
+          const apiError = error as Error & { status?: number }
+          if (apiError.status === 403) {
+            form.innerHTML = `
+              <div class="card">
+                <h3>Accès refusé</h3>
+                <p>Tu n'as pas le droit de modifier ce quiz.</p>
+                <button type="button" id="back-to-my-quizzes-denied">Retourner à mes quiz</button>
+              </div>
+            `
+            const backButton = form.querySelector<HTMLButtonElement>('#back-to-my-quizzes-denied')
+            if (backButton) {
+              backButton.addEventListener('click', () => navigate('/my-quizzes'))
+            }
+            return
+          }
+          throw error
+        }
+      }
+
+      void checkAccessAndLoad()
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault()
@@ -344,6 +403,9 @@ export const renderEditQuizPage = (
           .map((questionCard) => {
             const labelInput = questionCard.querySelector<HTMLInputElement>('input[name="question-label"]')
             const typeSelect = questionCard.querySelector<HTMLSelectElement>('select[name="question-type"]')
+            const timeLimitInput = questionCard.querySelector<HTMLInputElement>('input[name="question-time-limit"]')
+            const parsedTimeLimit = Number.parseInt(String(timeLimitInput?.value ?? '30'), 10)
+            const timeLimit = Number.isInteger(parsedTimeLimit) ? Math.min(300, Math.max(5, parsedTimeLimit)) : 30
             const correctSelect = questionCard.querySelector<HTMLSelectElement>('select[name="question-correct"]')
             const qcmAnswerInputs = Array.from(
               questionCard.querySelectorAll<HTMLInputElement>('input[name="question-qcm-answer"]'),
@@ -372,18 +434,20 @@ export const renderEditQuizPage = (
               return {
                 label,
                 type: 'QCM',
+                timeLimit,
                 answers,
                 correctAnswers,
-              }
+              } satisfies EditQuestionPayload
             }
 
             return {
               label,
               type: 'TRUE_FALSE',
+              timeLimit,
               correctAnswer: String(correctSelect?.value ?? 'true') === 'true',
-            }
+            } satisfies EditQuestionPayload
           })
-          .filter((question): question is Record<string, unknown> => question !== null)
+          .filter((question): question is EditQuestionPayload => question !== null)
 
         if ('' === title || questions.length === 0) {
           if (message) {

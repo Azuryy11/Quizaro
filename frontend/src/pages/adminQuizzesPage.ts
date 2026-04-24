@@ -63,6 +63,43 @@ export const renderAdminQuizzesPage = ({ isAuthenticated, me, escapeHtml, naviga
         const description = escapeHtml(String(quiz.description ?? ''))
         const createdBy = escapeHtml(String(quiz.createdBy ?? 'Inconnu'))
         const questionsCount = Number(quiz.questionsCount ?? 0)
+        const questions = Array.isArray(quiz.questions) ? quiz.questions : []
+
+        const questionsHtml = questions.length === 0
+          ? '<p class="admin-quiz-empty">Aucune question trouvée pour ce quiz.</p>'
+          : questions
+              .map((rawQuestion, questionIndex) => {
+                const question = rawQuestion as Record<string, unknown>
+                const label = escapeHtml(String(question.label ?? 'Question sans titre'))
+                const type = escapeHtml(String(question.type ?? 'INCONNU'))
+                const answers = Array.isArray(question.answers) ? question.answers : []
+
+                const answersHtml = answers.length === 0
+                  ? '<li class="admin-quiz-answer">Aucune réponse</li>'
+                  : answers
+                      .map((rawAnswer) => {
+                        const answer = rawAnswer as Record<string, unknown>
+                        const content = escapeHtml(String(answer.content ?? 'Réponse vide'))
+                        const isCorrect = Boolean(answer.isCorrect)
+
+                        return `
+                          <li class="admin-quiz-answer${isCorrect ? ' admin-quiz-answer--correct' : ''}">
+                            ${content}${isCorrect ? ' <strong>(bonne réponse)</strong>' : ''}
+                          </li>
+                        `
+                      })
+                      .join('')
+
+                return `
+                  <div class="admin-quiz-question">
+                    <p><strong>Q${questionIndex + 1} (${type}) :</strong> ${label}</p>
+                    <ul class="admin-quiz-answer-list">
+                      ${answersHtml}
+                    </ul>
+                  </div>
+                `
+              })
+              .join('')
 
         return `
           <div class="card card--spaced">
@@ -71,10 +108,18 @@ export const renderAdminQuizzesPage = ({ isAuthenticated, me, escapeHtml, naviga
             <p><strong>ID :</strong> ${quizId}</p>
             <p><strong>Propriétaire :</strong> ${createdBy}</p>
             <p><strong>Questions :</strong> ${Number.isFinite(questionsCount) ? questionsCount : '-'}</p>
-            <button type="button" data-delete-quiz="${quizId}">Supprimer</button>
+            <details class="admin-quiz-details">
+              <summary>Voir les questions</summary>
+              <div class="admin-quiz-details-content">
+                ${questionsHtml}
+              </div>
+            </details>
+            <button type="button" data-delete-quiz="${quizId}" data-confirm-delete="0">Supprimer</button>
           </div>
         `
       }
+
+      const pendingDeleteTimeouts = new Map<number, number>()
 
       const loadQuizzes = async (): Promise<void> => {
         try {
@@ -105,9 +150,31 @@ export const renderAdminQuizzesPage = ({ isAuthenticated, me, escapeHtml, naviga
           return
         }
 
-        const confirmed = window.confirm('Supprimer ce quiz ? Cette action est irréversible.')
-        if (!confirmed) {
+        const confirmDelete = deleteButton.getAttribute('data-confirm-delete') === '1'
+        if (!confirmDelete) {
+          const existingTimeoutId = pendingDeleteTimeouts.get(quizId)
+          if (typeof existingTimeoutId === 'number') {
+            window.clearTimeout(existingTimeoutId)
+          }
+
+          deleteButton.setAttribute('data-confirm-delete', '1')
+          deleteButton.textContent = 'Cliquer encore pour supprimer'
+          message && (message.textContent = 'Confirme la suppression avec un second clic.')
+
+          const timeoutId = window.setTimeout(() => {
+            deleteButton.setAttribute('data-confirm-delete', '0')
+            deleteButton.textContent = 'Supprimer'
+            pendingDeleteTimeouts.delete(quizId)
+          }, 5000)
+
+          pendingDeleteTimeouts.set(quizId, timeoutId)
           return
+        }
+
+        const existingTimeoutId = pendingDeleteTimeouts.get(quizId)
+        if (typeof existingTimeoutId === 'number') {
+          window.clearTimeout(existingTimeoutId)
+          pendingDeleteTimeouts.delete(quizId)
         }
 
         void (async () => {
@@ -120,6 +187,8 @@ export const renderAdminQuizzesPage = ({ isAuthenticated, me, escapeHtml, naviga
           } catch (error) {
             message && (message.textContent = `Erreur: ${(error as Error).message}`)
             deleteButton.disabled = false
+            deleteButton.setAttribute('data-confirm-delete', '0')
+            deleteButton.textContent = 'Supprimer'
           }
         })()
       })
