@@ -2,25 +2,9 @@ import type { PageContext, PageRenderResult } from './types'
 import QRCode from 'qrcode'
 
 export const renderWaitingSessionPage = (
-  { isAuthenticated, navigate, apiGet, apiPost, escapeHtml }: PageContext,
+  { navigate, apiGet, apiPost, escapeHtml }: PageContext,
   quizSessionId: number,
 ): PageRenderResult => {
-  if (!isAuthenticated) {
-    return {
-      content: `
-        <section class="card">
-          <h2>Salle d'attente</h2>
-          <p>Connecte toi pour accéder à la salle d'attente.</p>
-          <button id="go-login-waiting">Aller à la connexion</button>
-        </section>
-      `,
-      mount: () => {
-        document.querySelector<HTMLButtonElement>('#go-login-waiting')
-          ?.addEventListener('click', () => navigate('/login'))
-      },
-    }
-  }
-
   return {
     content: `
       <section class="card waiting-lobby">
@@ -42,6 +26,22 @@ export const renderWaitingSessionPage = (
       let currentQuizId = 0
 
       if (!content) return
+
+      const renderPlayers = (players: string[]): string => {
+        if (players.length === 0) {
+          return '<p class="lobby-players-empty">Aucun joueur n\'a encore rejoint la session.</p>'
+        }
+
+        return `
+          <ul id="lobby-players-list" class="lobby-players-list">
+            ${players.map((nickname) => `
+              <li class="lobby-player-item">
+                <span class="lobby-player-name">${escapeHtml(nickname)}</span>
+              </li>
+            `).join('')}
+          </ul>
+        `
+      }
 
       const stopPolling = (): void => {
         if (pollIntervalId !== null) {
@@ -81,6 +81,12 @@ export const renderWaitingSessionPage = (
           const code = String(session.code ?? '')
           const isOwner = Boolean(session.isOwner)
           const playerCount = Number(session.playerCount ?? 0)
+          const players = Array.isArray(session.players)
+            ? session.players
+              .filter((player): player is string => typeof player === 'string')
+              .map((nickname) => nickname.trim())
+              .filter((nickname) => nickname.length > 0)
+            : []
           const title = escapeHtml(String(quiz.title ?? 'Quiz'))
           const description = String(quiz.description ?? '')
           const joinUrl = `${window.location.origin}${window.location.pathname}#/join/${code}`
@@ -100,11 +106,19 @@ export const renderWaitingSessionPage = (
                 <span id="lobby-player-count-value">${playerCount}</span>
                 <span id="lobby-player-count-label">joueur${playerCount > 1 ? 's' : ''} connecté${playerCount > 1 ? 's' : ''}</span>
               </div>
-              <div class="lobby-qr">
-                <img id="lobby-qr-img" alt="QR Code de la session" width="200" height="200" />
-              </div>
               ${isOwner
-                ? '<button id="lobby-start-btn" class="lobby-start-btn" type="button">Démarrer la session</button>'
+                ? 
+                `
+                <div class="lobby-players">
+                <h4>Joueurs présents :</h4>
+                <div id="lobby-players-wrapper">
+                  ${renderPlayers(players)}
+                </div>
+              </div>
+                <div class="lobby-qr">
+                  <img id="lobby-qr-img" alt="QR Code de la session" width="200" height="200" />
+                </div>
+                <button id="lobby-start-btn" class="lobby-start-btn" type="button">Démarrer la session</button>`
                 : '<p class="lobby-waiting-msg">En attente du démarrage par le créateur...</p>'
               }
             `
@@ -134,9 +148,13 @@ export const renderWaitingSessionPage = (
           } else {
             const countEl = content.querySelector<HTMLSpanElement>('#lobby-player-count-value')
             const labelEl = content.querySelector<HTMLSpanElement>('#lobby-player-count-label')
+            const playersWrapper = content.querySelector<HTMLDivElement>('#lobby-players-wrapper')
             if (countEl) countEl.textContent = String(playerCount)
             if (labelEl) {
               labelEl.textContent = `joueur${playerCount > 1 ? 's' : ''} connecté${playerCount > 1 ? 's' : ''}`
+            }
+            if (playersWrapper) {
+              playersWrapper.innerHTML = renderPlayers(players)
             }
           }
         } catch (error) {

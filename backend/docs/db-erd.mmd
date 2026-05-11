@@ -48,7 +48,9 @@ erDiagram
     PLAYER_SESSION {
         int id PK
         int quiz_session_id FK
-        int user_id FK
+        int user_id "nullable FK -> USER.id"
+        bool isGuest
+        varchar accessTokenHash "nullable"
         int score
         varchar nickname
         datetime_immutable joinedAt
@@ -72,7 +74,7 @@ erDiagram
 
     QUIZ ||--o{ QUIZ_SESSION : sessions
     QUIZ_SESSION ||--o{ PLAYER_SESSION : players
-    USER ||--o{ PLAYER_SESSION : user
+    USER o|--o{ PLAYER_SESSION : user
 
     PLAYER_SESSION ||--o{ USER_ANSWER : answers
     QUESTION ||--o{ USER_ANSWER : asked

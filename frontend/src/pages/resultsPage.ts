@@ -9,30 +9,14 @@ type ResultRow = {
   isMe: boolean
 }
 
-export const renderResultsPage = ({ isAuthenticated, navigate, apiGet, apiPost, escapeHtml }: PageContext, quizSessionId: number): PageRenderResult => {
-  if (!isAuthenticated) {
-    return {
-      content: `
-        <section class="card">
-          <h2>Tableau des scores</h2>
-          <p>Tu dois te connecter pour voir le tableau</p>
-          <button id="go-login">Aller à la connexion</button>
-        </section>
-      `,
-      mount: () => {
-        const goLoginButton = document.querySelector<HTMLButtonElement>('#go-login')
-        if (goLoginButton) {
-          goLoginButton.addEventListener('click', () => navigate('/login'))
-        }
-      },
-    }
-  }
-
+export const renderResultsPage = ({ navigate, apiGet, apiPost, escapeHtml }: PageContext, quizSessionId: number): PageRenderResult => {
   return {
     content: `
-        <section class="card">
-          <h2>Tableau des scores</h2>
-          <p id="results-page-message"></p>
+        <section class="results-page">
+          <header class="results-page-header">
+            <h2>TABLEAU DES SCORES</h2>
+          </header>
+          <p id="results-page-message" class="results-page-message"></p>
           <div id="results-page-content">
             <div class="loading-row" aria-busy="true" aria-live="polite">
               <span class="spinner" aria-hidden="true"></span>
@@ -129,6 +113,11 @@ export const renderResultsPage = ({ isAuthenticated, navigate, apiGet, apiPost, 
           const sessionCode = escapeHtml(String(session.code ?? ''))
           const sessionStatusRaw = String(session.status ?? 'INCONNU')
           const sessionStatus = escapeHtml(sessionStatusRaw)
+          const sessionStatusClass = sessionStatusRaw === 'FINISHED'
+            ? 'results-status-chip results-status-chip--done'
+            : sessionStatusRaw === 'RUNNING'
+              ? 'results-status-chip results-status-chip--running'
+              : 'results-status-chip results-status-chip--waiting'
           const isOwner = Boolean(session.isOwner)
           const reviewStorageKey = `reviewQuizSession:${sessionId}`
           const hasReview = window.sessionStorage.getItem(reviewStorageKey) !== null
@@ -152,6 +141,7 @@ export const renderResultsPage = ({ isAuthenticated, navigate, apiGet, apiPost, 
                 .map((result) => {
                   const percentage = totalQuestions > 0 ? Math.round((result.score / totalQuestions) * 100) : 0
                   const statusLabel = result.finishedAt ? 'Terminé' : 'En attente'
+                  const statusClass = result.finishedAt ? 'results-status results-status--done' : 'results-status results-status--waiting'
                   const nickname = escapeHtml(result.nickname)
                   const nicknameCell = result.isMe ? `<strong>${nickname}</strong>` : nickname
 
@@ -161,34 +151,37 @@ export const renderResultsPage = ({ isAuthenticated, navigate, apiGet, apiPost, 
                       <td>${nicknameCell}</td>
                       <td>${result.score}/${totalQuestions}</td>
                       <td>${percentage}%</td>
-                      <td>${statusLabel}</td>
+                      <td><span class="${statusClass}">${statusLabel}</span></td>
                     </tr>
                   `
                 })
                 .join('')
-            : '<tr><td colspan="5">Aucun résultat disponible.</td></tr>'
+            : '<tr><td colspan="5" class="results-empty-row">Aucun résultat disponible.</td></tr>'
 
           content.innerHTML = `
-            <div class="card">
-              <p><strong>Quiz :</strong> ${quizTitle}</p>
-              <p><strong>Code :</strong> ${sessionCode || 'Aucun code'}</p>
-              <p><strong>Statut :</strong> ${sessionStatus}</p>
+            <div class="results-session-card">
+              <h3 class="results-session-title">${quizTitle}</h3>
+              <p class="results-session-code">Code : ${sessionCode || 'Aucun code'}</p>
+              <p class="results-session-status">Statut : <span class="${sessionStatusClass}">${sessionStatus}</span></p>
             </div>
-            <div class="card">
-              <table class="results-table">
-                <thead>
-                  <tr>
-                    <th>Rank</th>
-                    <th>Joueur</th>
-                    <th>Score</th>
-                    <th>Pourcentage</th>
-                    <th>Statut</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${rowsHtml}
-                </tbody>
-              </table>
+
+            <div class="results-table-card">
+              <div class="results-table-scroll">
+                <table class="results-table">
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Joueur</th>
+                      <th>Score</th>
+                      <th>%</th>
+                      <th>Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rowsHtml}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div class="results-actions">

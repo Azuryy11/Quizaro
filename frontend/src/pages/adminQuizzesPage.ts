@@ -40,9 +40,9 @@ export const renderAdminQuizzesPage = ({ isAuthenticated, me, escapeHtml, naviga
   return {
     content: `
       <section class="card">
-        <h2>Gestion des quiz (admin)</h2>
-        <p id="admin-quizzes-msg"></p>
+        <h2>Gestion des quiz</h2>
         <div id="admin-quizzes-list">Chargement...</div>
+        <p id="admin-quizzes-msg"></p>
         <button id="admin-quizzes-back" type="button" class="play-quiz-submit">Retour à l'administration</button>
       </section>
     `,
@@ -123,7 +123,7 @@ export const renderAdminQuizzesPage = ({ isAuthenticated, me, escapeHtml, naviga
 
       const loadQuizzes = async (): Promise<void> => {
         try {
-          const response = await apiGet('/api/quizzes')
+          const response = await apiGet('/api/quizzes?scope=all')
           const quizzes = Array.isArray(response.quizzes) ? response.quizzes : []
 
           if (quizzes.length === 0) {

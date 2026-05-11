@@ -20,8 +20,14 @@ class PlayerSession
     private ?QuizSession $quizSession = null;
 
     #[ORM\ManyToOne(inversedBy: 'playerSessions')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: true)]
     private ?User $user = null;
+
+    #[ORM\Column]
+    private bool $isGuest = false;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $accessTokenHash = null;
 
     /**
      * @var Collection<int, UserAnswer>
@@ -72,6 +78,30 @@ class PlayerSession
     public function setUser(?User $user): static
     {
         $this->user = $user;
+
+        return $this;
+    }
+
+    public function isGuest(): bool
+    {
+        return $this->isGuest;
+    }
+
+    public function setIsGuest(bool $isGuest): static
+    {
+        $this->isGuest = $isGuest;
+
+        return $this;
+    }
+
+    public function getAccessTokenHash(): ?string
+    {
+        return $this->accessTokenHash;
+    }
+
+    public function setAccessTokenHash(?string $accessTokenHash): static
+    {
+        $this->accessTokenHash = $accessTokenHash;
 
         return $this;
     }

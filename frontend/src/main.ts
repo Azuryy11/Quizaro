@@ -21,6 +21,20 @@ const app = document.querySelector<HTMLDivElement>('#app')
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '')
 const buildApiUrl = (path: string): string => (apiBaseUrl ? `${apiBaseUrl}${path}` : path)
 
+const getGuestPlayerToken = (): string => {
+  return (window.sessionStorage.getItem('guestPlayerToken') ?? '').trim()
+}
+
+const withGuestTokenHeaders = (headers?: HeadersInit): Headers => {
+  const finalHeaders = new Headers(headers ?? {})
+  const token = getGuestPlayerToken()
+  if (token !== '') {
+    finalHeaders.set('X-Player-Token', token)
+  }
+
+  return finalHeaders
+}
+
 const parseJsonResponse = async (response: Response): Promise<Record<string, unknown>> => {
   const contentType = response.headers.get('content-type') ?? ''
   const bodyText = await response.text()
@@ -67,13 +81,13 @@ const parseJsonResponse = async (response: Response): Promise<Record<string, unk
 
 const fetchApi = async (path: string): Promise<Record<string, unknown>> => {
   try {
-    return await fetch(path, { credentials: 'include' }).then(parseJsonResponse)
+    return await fetch(path, { credentials: 'include', headers: withGuestTokenHeaders() }).then(parseJsonResponse)
   } catch (error) {
     if (!apiBaseUrl) {
       throw error
     }
 
-    return fetch(buildApiUrl(path), { credentials: 'include' }).then(parseJsonResponse)
+    return fetch(buildApiUrl(path), { credentials: 'include', headers: withGuestTokenHeaders() }).then(parseJsonResponse)
   }
 }
 
@@ -81,7 +95,8 @@ const fetchApiJson = async (
   path: string,
   options: Omit<RequestInit, 'credentials'>,
 ): Promise<Record<string, unknown>> => {
-  const request = (url: string) => fetch(url, { ...options, credentials: 'include' }).then(parseJsonResponse)
+  const request = (url: string) =>
+    fetch(url, { ...options, credentials: 'include', headers: withGuestTokenHeaders(options.headers) }).then(parseJsonResponse)
 
   try {
     return await request(path)

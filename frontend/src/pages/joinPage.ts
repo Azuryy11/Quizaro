@@ -4,44 +4,59 @@ export const renderJoinPage = (
   { isAuthenticated, navigate, apiPost, escapeHtml }: PageContext,
   code: string,
 ): PageRenderResult => {
-  if (!isAuthenticated) {
-    return {
-      content: `
-        <section class="card">
-          <h2>Rejoindre une session</h2>
-          <p>Connecte toi pour rejoindre cette session.</p>
-          <button id="go-login-join">Aller à la connexion</button>
-        </section>
-      `,
-      mount: () => {
-        document.querySelector<HTMLButtonElement>('#go-login-join')
-          ?.addEventListener('click', () => navigate('/login'))
-      },
-    }
-  }
-
   return {
     content: `
       <section class="card">
-        <h2>Rejoindre la session...</h2>
-        <div class="loading-row" aria-busy="true" aria-live="polite">
-          <span class="spinner" aria-hidden="true"></span>
-          <span>Connexion en cours...</span>
-        </div>
+        <h2>Rejoindre une session</h2>
+        <p>Code : ${escapeHtml(code.toUpperCase())}</p>
+        ${isAuthenticated ? '' : `
+          <label for="join-guest-nickname">Pseudo</label>
+          <input id="join-guest-nickname" type="text" minlength="2" maxlength="30" placeholder="Ton pseudo" required>
+        `}
+        <button id="join-now-btn" type="button">Rejoindre</button>
         <p id="join-msg"></p>
       </section>
     `,
     mount: () => {
       const msgEl = document.querySelector<HTMLParagraphElement>('#join-msg')
+      const joinButton = document.querySelector<HTMLButtonElement>('#join-now-btn')
+      const nicknameInput = document.querySelector<HTMLInputElement>('#join-guest-nickname')
 
-      const doJoin = async (): Promise<void> => {
+      const setMessage = (text: string): void => {
+        if (msgEl) {
+          msgEl.textContent = text
+        }
+      }
+
+      joinButton?.addEventListener('click', async () => {
+        joinButton.disabled = true
+        setMessage('Connexion en cours...')
+
         try {
-          const result = await apiPost('/api/quiz-sessions/join', { code: code.toUpperCase() })
+          const payload: Record<string, unknown> = { code: code.toUpperCase() }
+
+          if (!isAuthenticated) {
+            const nickname = (nicknameInput?.value ?? '').trim()
+            if (nickname.length < 2 || nickname.length > 30) {
+              setMessage('Pseudo requis (2 à 30 caractères).')
+              joinButton.disabled = false
+              return
+            }
+
+            payload.nickname = nickname
+          }
+
+          const result = await apiPost('/api/quiz-sessions/join', payload)
           const session = (result.session as Record<string, unknown> | undefined) ?? undefined
           const quizSessionId = Number(session?.quizSessionId ?? 0)
           const quizId = Number(session?.quizId ?? 0)
           const sessionCode = String(session?.code ?? '').trim()
           const playerSessionId = Number(session?.playerSessionId ?? 0)
+          const playerToken = String(session?.playerToken ?? '').trim()
+
+          if (playerToken !== '') {
+            window.sessionStorage.setItem('guestPlayerToken', playerToken)
+          }
 
           if (Number.isFinite(quizId) && quizId > 0 && sessionCode !== '') {
             window.sessionStorage.setItem(
@@ -56,11 +71,10 @@ export const renderJoinPage = (
             navigate('/')
           }
         } catch (error) {
-          if (msgEl) msgEl.textContent = escapeHtml((error as Error).message)
+          setMessage(escapeHtml((error as Error).message))
+          joinButton.disabled = false
         }
-      }
-
-      void doJoin()
+      })
     },
   }
 }

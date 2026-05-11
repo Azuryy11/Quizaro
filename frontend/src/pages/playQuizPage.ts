@@ -51,24 +51,6 @@ const readQuestions = (quiz: Record<string, unknown>): PlayQuizQuestion[] => {
 }
 
 export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost, escapeHtml }: PageContext, quizId: number): PageRenderResult => {
-  if (!isAuthenticated) {
-    return {
-      content: `
-        <section class="card">
-          <h2>Tester un quiz</h2>
-          <p>Connecte toi pour répondre à un quiz.</p>
-          <button id="go-login-play-quiz">Aller à la connexion</button>
-        </section>
-      `,
-      mount: () => {
-        const goLoginButton = document.querySelector<HTMLButtonElement>('#go-login-play-quiz')
-        if (goLoginButton) {
-          goLoginButton.addEventListener('click', () => navigate('/login'))
-        }
-      },
-    }
-  }
-
   return {
     content: `
       <section class="card">
@@ -116,9 +98,18 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
               result = await apiPost('/api/quiz-sessions/join', { code: storedCode })
             } catch {
               window.sessionStorage.removeItem(storageKey)
+
+              if (!isAuthenticated) {
+                throw new Error('Session invitée introuvable. Rejoins à nouveau avec le code ou le QR code.')
+              }
+
               result = await apiGet(`/api/quizzes/${quizId}/play`)
             }
           } else {
+            if (!isAuthenticated) {
+              throw new Error('Aucune session invitée active. Rejoins une session avec un code ou un QR code.')
+            }
+
             result = await apiGet(`/api/quizzes/${quizId}/play`)
           }
 
@@ -130,7 +121,6 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
 
           const quiz = (result.quiz as Record<string, unknown> | undefined) ?? undefined
           const session = (result.session as Record<string, unknown> | undefined) ?? undefined
-          const playerSessionId = Number(session?.playerSessionId ?? 0)
           const sessionCode = String(session?.code ?? '').trim()
           const quizSessionId = Number(session?.quizSessionId ?? 0)
           const sessionStatus = String(session?.status ?? 'RUNNING')
@@ -140,18 +130,12 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
             return
           }
 
-          if (!Number.isFinite(playerSessionId) || playerSessionId <= 0) {
-            container.innerHTML = '<p>Session de jeu invalide.</p>'
-            return
-          }
-
           if (sessionCode !== '' && Number.isFinite(quizSessionId) && quizSessionId > 0) {
             window.sessionStorage.setItem(
               storageKey,
               JSON.stringify({
                 quizId,
                 quizSessionId,
-                playerSessionId,
                 code: sessionCode,
               }),
             )
@@ -210,7 +194,6 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
 
           try {
             const submitResult = await apiPost(`/api/quizzes/${quizId}/submit`, {
-              playerSessionId,
               quizSessionId,
               answers,
             })

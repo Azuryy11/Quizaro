@@ -17,7 +17,7 @@ use Symfony\Component\Routing\Attribute\Route;
 final class ApiQuizController extends AbstractController
 {
     #[Route('/api/quizzes', name: 'api_quizzes_list', methods: ['GET'])]
-    public function list(EntityManagerInterface $entityManager): JsonResponse
+    public function list(Request $request, EntityManagerInterface $entityManager): JsonResponse
     {
         /** @var User|null $user */
         $user = $this->getUser();
@@ -28,14 +28,26 @@ final class ApiQuizController extends AbstractController
             ], Response::HTTP_UNAUTHORIZED);
         }
 
-        $isAdmin = in_array(User::ROLE_ADMIN, $user->getRoles(), true);
-        $criteria = $isAdmin ? [] : ['createdBy' => $user];
+        // Par défaut, un utilisateur voit uniquement ses quiz (y compris un admin)
+        // L'accès à tous les quiz est autorisé uniquement avec ?scope=all pour un admin.
+        $criteria = ['createdBy' => $user];
+        if ($this->shouldListAllQuizzes($request, $user)) {
+            $criteria = [];
+        }
 
         $quizzes = $entityManager->getRepository(Quiz::class)->findBy($criteria, ['id' => 'DESC']);
 
         return $this->json([
             'quizzes' => array_map(fn (Quiz $quiz): array => $this->normalizeQuiz($quiz), $quizzes),
         ]);
+    }
+
+    private function shouldListAllQuizzes(Request $request, User $user): bool
+    {
+        $scope = strtolower(trim((string) $request->query->get('scope', '')));
+
+        return 'all' === $scope
+            && in_array(User::ROLE_ADMIN, $user->getRoles(), true);
     }
 
     #[Route('/api/quizzes/{id}', name: 'api_quizzes_show', methods: ['GET'])]
@@ -315,9 +327,9 @@ final class ApiQuizController extends AbstractController
                     'message' => sprintf('timeLimit doit être un entier pour la question #%d.', $index + 1),
                 ], Response::HTTP_BAD_REQUEST);
             }
-            if ($timeLimitRaw < 5 || $timeLimitRaw > 300) {
+            if ($timeLimitRaw < 5 || $timeLimitRaw > 60) {
                 return $this->json([
-                    'message' => sprintf('timeLimit doit être compris entre 5 et 300 secondes pour la question #%d.', $index + 1),
+                    'message' => sprintf('timeLimit doit être compris entre 5 et 60 secondes pour la question #%d.', $index + 1),
                 ], Response::HTTP_BAD_REQUEST);
             }
 
@@ -513,6 +525,12 @@ final class ApiQuizController extends AbstractController
      */
     private function normalizeQuiz(Quiz $quiz): array
     {
+        $createdByUser = $quiz->getCreatedBy();
+        $createdBy = $createdByUser?->getDisplayName();
+        if (!is_string($createdBy) || '' === trim($createdBy)) {
+            $createdBy = $createdByUser?->getUserIdentifier();
+        }
+
         $questions = $quiz->getQuestions()->toArray();
 
         usort(
@@ -552,10 +570,36 @@ final class ApiQuizController extends AbstractController
             'title' => $quiz->getTitle(),
             'description' => $quiz->getDescription(),
             'createdAt' => $quiz->getCreatedAt()->format(DATE_ATOM),
-            'createdBy' => $quiz->getCreatedBy()?->getUserIdentifier(),
+            'createdBy' => $createdBy,
             'questionsCount' => count($normalizedQuestions),
             'questions' => $normalizedQuestions,
         ];
     }
 
+    private function extractPlayerToken(Request $request): ?string
+    {
+        $headerToken = trim((string) $request->headers->get('X-Player-Token', ''));
+        if ($headerToken !== '') {
+            return $headerToken;
+        }
+
+        $auth = trim((string) $request->headers->get('Authorization', ''));
+        if (str_starts_with($auth, 'Bearer ')) {
+            $bearer = trim(substr($auth, 7));
+            return $bearer !== '' ? $bearer : null;
+        }
+
+        return null;
+    }
+
+    private function issuePlayerToken(): string
+    {
+        return bin2hex(random_bytes(32));
+    }
+
+    private function hashPlayerToken(string $token): string
+    {
+        $secretKey = $this->getParameter('kernel.secret');
+        return hash_hmac('sha256', $token, $secretKey);
+    }
 }

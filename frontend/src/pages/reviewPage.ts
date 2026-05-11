@@ -117,23 +117,7 @@ const normalizeReviewPayload = (value: unknown): ReviewPayload | null => {
   }
 }
 
-export const renderReviewPage = ({ isAuthenticated, navigate, escapeHtml }: PageContext, quizSessionId: number): PageRenderResult => {
-  if (!isAuthenticated) {
-    return {
-      content: `
-        <section class="card">
-          <h2>Relecture des réponses</h2>
-          <p>Connecte toi pour voir cette page.</p>
-          <button id="go-login-review">Aller à la connexion</button>
-        </section>
-      `,
-      mount: () => {
-        const goLoginButton = document.querySelector<HTMLButtonElement>('#go-login-review')
-        goLoginButton?.addEventListener('click', () => navigate('/login'))
-      },
-    }
-  }
-
+export const renderReviewPage = ({ navigate, escapeHtml }: PageContext, quizSessionId: number): PageRenderResult => {
   return {
     content: `
       <section class="card">
@@ -226,10 +210,7 @@ export const renderReviewPage = ({ isAuthenticated, navigate, escapeHtml }: Page
         .join('')
 
       content.innerHTML = `
-        <div class="card">
           <p><strong>Quiz :</strong> ${escapeHtml(review.title)}</p>
-          <p><strong>Session :</strong> #${review.quizSessionId}</p>
-        </div>
         ${questionsHtml}
         <button id="review-back-results" class="play-quiz-submit" type="button">Retour au classement</button>
       `

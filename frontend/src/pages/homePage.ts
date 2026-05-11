@@ -10,21 +10,20 @@ export const renderHomePage = ({ home, isAuthenticated, escapeHtml, apiPost, nav
         ${isAuthenticated ? `
           <a href="#/create-quiz">Créer un quiz</a>
           <a href="#/my-quizzes" class="home-action home-action--spaced">Jouer un quiz</a>
-
-          <hr>
-
-          <h3>Rejoindre une session avec un code</h3>
-          <form id="join-session-form" class="home-join-session" autocomplete="off">
-            <label for="join-session-code">Code de session</label>
-            <input id="join-session-code" name="code" type="text" inputmode="latin" maxlength="20" placeholder="ABC123" required>
-            <button id="join-session-submit" type="submit">Rejoindre</button>
-          </form>
-          <p id="join-session-msg" aria-live="polite"></p>
         ` : ''}
+
+        <hr>
+
+        <h3>Rejoindre une session avec un code</h3>
+        <form id="join-session-form" class="home-join-session" autocomplete="off">
+          <label for="join-session-code">Code de session</label>
+          <input id="join-session-code" name="code" type="text" inputmode="latin" maxlength="20" placeholder="ABC123" required>
+          <button id="join-session-submit" type="submit">Rejoindre</button>
+        </form>
+        <p id="join-session-msg" aria-live="polite"></p>
       </section>
     `,
-    mount: isAuthenticated
-      ? () => {
+    mount: () => {
           const form = document.querySelector<HTMLFormElement>('#join-session-form')
           const codeInput = document.querySelector<HTMLInputElement>('#join-session-code')
           const submitButton = document.querySelector<HTMLButtonElement>('#join-session-submit')
@@ -55,13 +54,26 @@ export const renderHomePage = ({ home, isAuthenticated, escapeHtml, apiPost, nav
             setMessage('Connexion à la session...')
 
             try {
-              const result = await apiPost('/api/quiz-sessions/join', { code })
+              if (!isAuthenticated) {
+                navigate(`/join/${code}`)
+                return
+              }
+
+              const payload: Record<string, unknown> = { code }
+
+              const result = await apiPost('/api/quiz-sessions/join', payload)
+              const session = (result.session as Record<string, unknown> | undefined) ?? undefined
               const quiz = (result.quiz as Record<string, unknown> | undefined) ?? undefined
               const quizId = Number(quiz?.id ?? 0)
+              const playerToken = String(session?.playerToken ?? '').trim()
 
               if (!Number.isFinite(quizId) || quizId <= 0) {
                 setMessage('Session invalide (quiz introuvable).')
                 return
+              }
+
+              if (playerToken !== '') {
+                window.sessionStorage.setItem('guestPlayerToken', playerToken)
               }
 
               warmPlayPayload(quizId, result)
@@ -74,7 +86,6 @@ export const renderHomePage = ({ home, isAuthenticated, escapeHtml, apiPost, nav
               }
             }
           })
-        }
-      : undefined,
+        },
   }
 }
