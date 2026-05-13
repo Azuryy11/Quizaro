@@ -310,6 +310,7 @@ final class ApiQuizSessionController extends AbstractController
         }
 
         $quizSession->setStatus(QuizSession::STATUS_RUNNING);
+        $quizSession->setStartedAt(new \DateTimeImmutable());
         $entityManager->flush();
 
         return $this->json([

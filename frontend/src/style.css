@@ -218,6 +218,10 @@ button:hover {
   overflow-wrap: anywhere;
 }
 
+#play-quiz-timer {
+  font-weight: 700;
+}
+
 .play-quiz-submit {
   margin-top: 1rem;
 }

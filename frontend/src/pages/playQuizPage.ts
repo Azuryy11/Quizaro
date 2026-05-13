@@ -235,11 +235,18 @@ export const renderPlayQuizPage = ({ isAuthenticated, navigate, apiGet, apiPost,
               }),
             )
 
+            window.sessionStorage.removeItem(storageKey)
             navigate('/results/' + quizSessionId)
             return
           } catch (error) {
+            const errMsg = (error as Error).message ?? ''
+            if (Number.isFinite(quizSessionId) && quizSessionId > 0 && errMsg.toLowerCase().includes('déjà terminée')) {
+              window.sessionStorage.removeItem(storageKey)
+              navigate('/results/' + quizSessionId)
+              return
+            }
             if (message) {
-              message.textContent = `${(error as Error).message}`
+              message.textContent = errMsg
             }
           }
 
